@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Orçamento Familiar</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#007bff">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #f5f7fa;
+            padding: 16px;
+            padding-bottom: 80px;
+            color: #333;
+        }
+        .container { max-width: 500px; margin: 0 auto; }
+        h1 { font-size: 24px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+        .status {
+            font-size: 14px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            background: #e2e8f0;
+            color: #475569;
+            margin-left: auto;
+        }
+        .status.online { background: #d1fae5; color: #065f46; }
+        .status.offline { background: #fee2e2; color: #991b1b; }
+        .saldo-card {
+            background: white;
+            border-radius: 24px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        .saldo-label { font-size: 14px; color: #64748b; text-transform: uppercase; }
+        .saldo-valor { font-size: 48px; font-weight: bold; margin: 8px 0 4px; }
+        .saldo-positivo { color: #059669; }
+        .saldo-negativo { color: #dc2626; }
+        .resumo-row {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #e2e8f0;
+        }
+        .resumo-item { text-align: center; flex: 1; }
+        .resumo-label { font-size: 12px; color: #64748b; }
+        .resumo-valor { font-size: 18px; font-weight: 600; margin-top: 4px; }
+        .receita { color: #059669; }
+        .despesa { color: #dc2626; }
+        .btn-group { display: flex; gap: 12px; margin-bottom: 20px; }
+        .btn {
+            flex: 1;
+            padding: 16px;
+            border: none;
+            border-radius: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-success { background: #10b981; color: white; }
+        .btn-outline { background: white; border: 1px solid #e2e8f0; color: #1e293b; }
+        .form-card {
+            background: white;
+            border-radius: 24px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            display: none;
+        }
+        .form-card.visible { display: block; }
+        .form-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .close-btn { background: none; border: none; font-size: 24px; cursor: pointer; }
+        input, select {
+            width: 100%;
+            padding: 14px;
+            margin-bottom: 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 16px;
+        }
+        .tipo-toggle { display: flex; gap: 12px; margin-bottom: 16px; }
+        .tipo-btn {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            background: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .tipo-btn.active[data-tipo="receita"] { background: #10b981; color: white; }
+        .tipo-btn.active[data-tipo="despesa"] { background: #ef4444; color: white; }
+        .foto-preview {
+            width: 100%;
+            height: 120px;
+            border: 2px dashed #cbd5e1;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 12px;
+            overflow: hidden;
+            background: #f1f5f9;
+            color: #94a3b8;
+            cursor: pointer;
+        }
+        .foto-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .lista-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 20px 0 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .search-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        .lancamento-item {
+            background: white;
+            border-radius: 16px;
+            padding: 12px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+        }
+        .lancamento-foto {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #f1f5f9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+        .lancamento-foto img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .lancamento-info { flex: 1; }
+        .lancamento-descricao { font-weight: 600; }
+        .lancamento-data { font-size: 12px; color: #64748b; }
+        .lancamento-valor { font-weight: 700; font-size: 18px; margin-right: 8px; }
+        .acoes {
+            display: flex;
+            gap: 8px;
+        }
+        .acoes button {
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            padding: 4px;
+        }
+        .tab-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            display: flex;
+            padding: 8px;
+            border-top: 1px solid #e2e8f0;
+        }
+        .tab-item {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 8px;
+            color: #94a3b8;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .tab-item.active { color: #007bff; }
+        .tab-icon { font-size: 20px; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div style="display: flex; align-items: center; margin-bottom: 16px;">
+            <h1>💰 Orçamento</h1>
+            <div id="status" class="status">Carregando...</div>
+        </div>
+        
+        <div id="content"></div>
+        
+        <div class="tab-bar">
+            <div class="tab-item active" data-tab="resumo"><span class="tab-icon">📊</span><span>Resumo</span></div>
+            <div class="tab-item" data-tab="lista"><span class="tab-icon">📋</span><span>Lançamentos</span></div>
+            <div class="tab-item" data-tab="adicionar"><span class="tab-icon">➕</span><span>Adicionar</span></div>
+        </div>
+    </div>
+    
+    <div id="formModal" class="form-card">
+        <div class="form-title">
+            <span>Novo Lançamento</span>
+            <button class="close-btn" onclick="fecharForm()">×</button>
+        </div>
+        <div class="tipo-toggle">
+            <button class="tipo-btn active" data-tipo="receita" id="btnReceita">💰 Receita</button>
+            <button class="tipo-btn" data-tipo="despesa" id="btnDespesa">💸 Despesa</button>
+        </div>
+        <input type="date" id="data" value="">
+        <input type="text" id="categoria" placeholder="Categoria" value="Outros">
+        <input type="text" id="descricao" placeholder="Descrição" required>
+        <input type="number" id="valor" step="0.01" placeholder="Valor (R$)" required>
+        <div class="foto-preview" id="fotoPreview" onclick="document.getElementById('fotoInput').click()">
+            <span>📸 Toque para adicionar foto</span>
+        </div>
+        <input type="file" id="fotoInput" accept="image/*" style="display: none;">
+        <div style="display: flex; gap: 12px;">
+            <button class="btn btn-outline" onclick="fecharForm()">Cancelar</button>
+            <button class="btn btn-success" onclick="salvarLancamento()">Salvar</button>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
