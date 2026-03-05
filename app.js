@@ -8,8 +8,8 @@ let mesAtual = new Date().toISOString().substring(0, 7);
 let termoBusca = '';
 let fotoBase64 = null;
 
-// Inicializar Banco e Status
-const request = indexedDB.open(DB_NAME, 5);
+// Inicialização
+const request = indexedDB.open(DB_NAME, 6);
 request.onupgradeneeded = e => {
     db = e.target.result;
     if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
@@ -18,50 +18,46 @@ request.onupgradeneeded = e => {
 request.onsuccess = e => {
     db = e.target.result;
     document.getElementById('filtroMes').value = mesAtual;
-    inicializarStatus();
+    
+    // Monitorar Status Online/Offline
+    const atualizarStatus = () => {
+        const label = document.getElementById('statusLabel');
+        label.innerText = navigator.onLine ? 'Online' : 'Offline';
+        label.className = `status ${navigator.onLine ? 'online' : 'offline'}`;
+        if(navigator.onLine) sincronizar();
+    };
+    window.addEventListener('online', atualizarStatus);
+    window.addEventListener('offline', atualizarStatus);
+    atualizarStatus();
+
     carregarLocal();
-    if (navigator.onLine) buscarDadosDaPlanilha(); // Busca dados novos do Google ao abrir
+    if(navigator.onLine) puxarDadosDaPlanilha();
 };
 
-function inicializarStatus() {
-    const label = document.getElementById('statusLabel');
-    const atualizar = () => {
-        const isOnline = navigator.onLine;
-        label.innerText = isOnline ? 'Online' : 'Offline';
-        label.className = `status ${isOnline ? 'online' : 'offline'}`;
-        if (isOnline) sincronizar();
-    };
-    window.addEventListener('online', atualizar);
-    window.addEventListener('offline', atualizar);
-    atualizar();
-}
-
-async function carregarLocal() {
-    const tx = db.transaction(STORE, 'readonly');
-    const store = tx.objectStore(STORE);
-    store.getAll().onsuccess = e => {
-        lancamentos = e.target.result;
-        atualizarTela();
-    };
-}
-
-// BUSCAR DADOS DA PLANILHA (Puxar o que já existe lá)
-async function buscarDadosDaPlanilha() {
+// PUXAR DADOS QUE JÁ ESTÃO NA PLANILHA
+async function puxarDadosDaPlanilha() {
     try {
-        const response = await fetch(`${API_URL}?action=list`);
-        const result = await response.json();
-        if (result.data) {
+        const res = await fetch(`${API_URL}?action=list`);
+        const json = await res.json();
+        if(json.data) {
             const tx = db.transaction(STORE, 'readwrite');
             const store = tx.objectStore(STORE);
-            result.data.forEach(item => {
-                // Mapeia fotoBase64 para o formato que o app usa
-                if(item.fotoBase64) item.foto = item.fotoBase64;
-                item.sinc = 1; // Já está na planilha
+            json.data.forEach(item => {
+                item.sinc = 1; 
+                if(item.fotoBase64) item.foto = item.fotoBase64; // Corrige nome da foto
                 store.put(item);
             });
             tx.oncomplete = () => carregarLocal();
         }
-    } catch (e) { console.error("Erro ao puxar dados:", e); }
+    } catch(e) { console.log("Erro ao baixar dados"); }
+}
+
+async function carregarLocal() {
+    const tx = db.transaction(STORE, 'readonly');
+    tx.objectStore(STORE).getAll().onsuccess = e => {
+        lancamentos = e.target.result;
+        atualizarTela();
+    };
 }
 
 function atualizarTela() {
@@ -85,14 +81,10 @@ function atualizarTela() {
                     <strong>${item.descricao}</strong>
                     <small>${item.categoria} • ${item.data.split('-').reverse().join('/')}</small>
                 </div>
-                <div class="acoes">
-                    <div class="${item.tipo === 'Receita' ? 'positivo' : 'negativo'}" style="font-weight:bold">
-                        ${item.tipo === 'Receita' ? '+' : '-'} R$ ${v.toFixed(2)}
-                    </div>
-                    <div>
-                        <button onclick="editar('${item.id}')" class="btn-edit">✏️</button>
-                        <button onclick="excluir('${item.id}')" style="background:none; border:none; color:red; font-size:16px;">🗑️</button>
-                    </div>
+                <div style="text-align:right">
+                    <div class="${item.tipo === 'Receita' ? 'positivo' : 'negativo'}" style="font-weight:bold">R$ ${v.toFixed(2)}</div>
+                    <small onclick="editar('${item.id}')" style="color:#007bff; cursor:pointer">Editar</small> | 
+                    <small onclick="excluir('${item.id}')" style="color:red; cursor:pointer">Excluir</small>
                 </div>
             </div>`;
     });
@@ -102,18 +94,9 @@ function atualizarTela() {
     document.getElementById('totalDes').innerText = `R$ ${desp.toFixed(2)}`;
 }
 
+// Funções de Ação
 document.getElementById('filtroMes').onchange = e => { mesAtual = e.target.value; atualizarTela(); };
 document.getElementById('campoBusca').oninput = e => { termoBusca = e.target.value.toLowerCase(); atualizarTela(); };
-
-function abrirForm() {
-    document.getElementById('editId').value = '';
-    document.getElementById('formTitulo').innerText = 'Novo Lançamento';
-    document.getElementById('data').value = new Date().toISOString().substring(0, 10);
-    document.getElementById('imgPrev').style.display = 'none';
-    fotoBase64 = null;
-    document.getElementById('modalForm').classList.add('active');
-    document.getElementById('overlay').classList.add('active');
-}
 
 function tratarFoto(input) {
     const reader = new FileReader();
@@ -132,14 +115,12 @@ async function salvar() {
         tipo: document.getElementById('tipo').value,
         data: document.getElementById('data').value,
         categoria: document.getElementById('categoria').value || 'Geral',
-        descricao: document.getElementById('descricao').value || 'Sem descrição',
+        descricao: document.getElementById('descricao').value || 'Sem título',
         valor: document.getElementById('valor').value,
         foto: fotoBase64,
-        fotoBase64: fotoBase64, // Campo compatível com a planilha
+        fotoBase64: fotoBase64, // Nome esperado pelo App Script
         sinc: 0
     };
-    if(!item.valor || !item.data) return alert('Data e Valor são obrigatórios!');
-    
     const tx = db.transaction(STORE, 'readwrite');
     tx.objectStore(STORE).put(item);
     tx.oncomplete = () => { fecharTudo(); carregarLocal(); };
@@ -147,10 +128,8 @@ async function salvar() {
 
 function editar(id) {
     const item = lancamentos.find(i => i.id == id);
-    if (!item) return;
-    abrirForm();
+    if(!item) return;
     document.getElementById('editId').value = item.id;
-    document.getElementById('formTitulo').innerText = 'Editar Lançamento';
     document.getElementById('tipo').value = item.tipo;
     document.getElementById('data').value = item.data;
     document.getElementById('categoria').value = item.categoria;
@@ -161,27 +140,18 @@ function editar(id) {
         document.getElementById('imgPrev').src = item.foto;
         document.getElementById('imgPrev').style.display = 'block';
     }
+    document.getElementById('modalForm').classList.add('active');
+    document.getElementById('overlay').classList.add('active');
 }
 
 function verFoto(src) {
-    if(!src || src.length < 50) return;
+    if(!src || src.length < 100) return;
     document.getElementById('fotoGrande').src = src;
     document.getElementById('modalZoom').classList.add('active');
     document.getElementById('overlay').classList.add('active');
 }
 
-function fecharTudo() {
-    document.querySelectorAll('.modal, .overlay').forEach(el => el.classList.remove('active'));
-}
-
-async function excluir(id) {
-    if(confirm('Excluir este item permanentemente?')) {
-        const tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).delete(id);
-        tx.oncomplete = carregarLocal;
-        // Opcional: Adicionar chamada fetch para deletar na planilha também
-    }
-}
+function fecharTudo() { document.querySelectorAll('.modal, .overlay').forEach(el => el.classList.remove('active')); }
 
 function navegar(view, btn) {
     document.getElementById('view-resumo').style.display = view === 'resumo' ? 'block' : 'none';
@@ -189,6 +159,22 @@ function navegar(view, btn) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
     if(view === 'grafico') renderGrafico();
+}
+
+function abrirForm() {
+    document.getElementById('editId').value = '';
+    document.getElementById('imgPrev').style.display = 'none';
+    fotoBase64 = null;
+    document.getElementById('modalForm').classList.add('active');
+    document.getElementById('overlay').classList.add('active');
+}
+
+async function excluir(id) {
+    if(confirm('Excluir?')) {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).delete(id);
+        tx.oncomplete = carregarLocal;
+    }
 }
 
 function renderGrafico() {
@@ -217,19 +203,17 @@ function exportarCSV() {
 
 async function sincronizar() {
     const tx = db.transaction(STORE, 'readonly');
-    const pendentes = await new Promise(res => {
-        tx.objectStore(STORE).getAll().onsuccess = e => res(e.target.result.filter(i => i.sinc === 0));
-    });
-    for(let item of pendentes) {
-        try {
-            await fetch(API_URL, { method: 'POST', body: JSON.stringify(item), mode: 'no-cors' });
-            const txW = db.transaction(STORE, 'readwrite');
-            item.sinc = 1;
-            txW.objectStore(STORE).put(item);
-        } catch(e) { break; }
-    }
+    tx.objectStore(STORE).getAll().onsuccess = async e => {
+        const pendentes = e.target.result.filter(i => i.sinc === 0);
+        for(let item of pendentes) {
+            try {
+                await fetch(API_URL, { method: 'POST', body: JSON.stringify(item), mode: 'no-cors' });
+                const txW = db.transaction(STORE, 'readwrite');
+                item.sinc = 1;
+                txW.objectStore(STORE).put(item);
+            } catch(e) { break; }
+        }
+    };
 }
 
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('service-worker.js');
-}
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('service-worker.js'); }
