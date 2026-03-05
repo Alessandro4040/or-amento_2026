@@ -3,242 +3,126 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Orçamento Familiar</title>
+    <title>Meu Controle Financeiro</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#007bff">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background: #f5f7fa;
-            padding: 16px;
-            padding-bottom: 80px;
-            color: #333;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, sans-serif; }
+        body { background: #f0f2f5; padding: 15px; padding-bottom: 90px; color: #333; }
         .container { max-width: 500px; margin: 0 auto; }
-        h1 { font-size: 24px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
-        .status {
-            font-size: 14px;
-            padding: 4px 12px;
-            border-radius: 20px;
-            background: #e2e8f0;
-            color: #475569;
-            margin-left: auto;
-        }
-        .status.online { background: #d1fae5; color: #065f46; }
-        .status.offline { background: #fee2e2; color: #991b1b; }
-        .saldo-card {
-            background: white;
-            border-radius: 24px;
-            padding: 24px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        }
-        .saldo-label { font-size: 14px; color: #64748b; text-transform: uppercase; }
-        .saldo-valor { font-size: 48px; font-weight: bold; margin: 8px 0 4px; }
-        .saldo-positivo { color: #059669; }
-        .saldo-negativo { color: #dc2626; }
-        .resumo-row {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 16px;
-            padding-top: 16px;
-            border-top: 1px solid #e2e8f0;
-        }
-        .resumo-item { text-align: center; flex: 1; }
-        .resumo-label { font-size: 12px; color: #64748b; }
-        .resumo-valor { font-size: 18px; font-weight: 600; margin-top: 4px; }
-        .receita { color: #059669; }
-        .despesa { color: #dc2626; }
-        .btn-group { display: flex; gap: 12px; margin-bottom: 20px; }
-        .btn {
-            flex: 1;
-            padding: 16px;
-            border: none;
-            border-radius: 16px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        .btn-primary { background: #007bff; color: white; }
-        .btn-success { background: #10b981; color: white; }
-        .btn-outline { background: white; border: 1px solid #e2e8f0; color: #1e293b; }
-        .form-card {
-            background: white;
-            border-radius: 24px;
-            padding: 20px;
-            margin: 20px 0;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-            display: none;
-        }
-        .form-card.visible { display: block; }
-        .form-title {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 16px;
-            display: flex;
-            justify-content: space-between;
-        }
-        .close-btn { background: none; border: none; font-size: 24px; cursor: pointer; }
-        input, select {
-            width: 100%;
-            padding: 14px;
-            margin-bottom: 12px;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            font-size: 16px;
-        }
-        .tipo-toggle { display: flex; gap: 12px; margin-bottom: 16px; }
-        .tipo-btn {
-            flex: 1;
-            padding: 12px;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            background: white;
-            font-size: 16px;
-            cursor: pointer;
-        }
-        .tipo-btn.active[data-tipo="receita"] { background: #10b981; color: white; }
-        .tipo-btn.active[data-tipo="despesa"] { background: #ef4444; color: white; }
-        .foto-preview {
-            width: 100%;
-            height: 120px;
-            border: 2px dashed #cbd5e1;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 12px;
-            overflow: hidden;
-            background: #f1f5f9;
-            color: #94a3b8;
-            cursor: pointer;
-        }
-        .foto-preview img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        .lista-title {
-            font-size: 18px;
-            font-weight: 600;
-            margin: 20px 0 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .search-input {
-            flex: 1;
-            padding: 8px 12px;
-            border: 1px solid #e2e8f0;
-            border-radius: 20px;
-            font-size: 14px;
-        }
-        .lancamento-item {
-            background: white;
-            border-radius: 16px;
-            padding: 12px;
-            margin-bottom: 8px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.03);
-        }
-        .lancamento-foto {
-            width: 40px;
-            height: 40px;
-            border-radius: 8px;
-            overflow: hidden;
-            background: #f1f5f9;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-        }
-        .lancamento-foto img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        .lancamento-info { flex: 1; }
-        .lancamento-descricao { font-weight: 600; }
-        .lancamento-data { font-size: 12px; color: #64748b; }
-        .lancamento-valor { font-weight: 700; font-size: 18px; margin-right: 8px; }
-        .acoes {
-            display: flex;
-            gap: 8px;
-        }
-        .acoes button {
-            background: none;
-            border: none;
-            font-size: 18px;
-            cursor: pointer;
-            padding: 4px;
-        }
-        .tab-bar {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: white;
-            display: flex;
-            padding: 8px;
-            border-top: 1px solid #e2e8f0;
-        }
-        .tab-item {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 8px;
-            color: #94a3b8;
-            font-size: 12px;
-            cursor: pointer;
-        }
-        .tab-item.active { color: #007bff; }
-        .tab-icon { font-size: 20px; }
-        .hidden { display: none; }
+        
+        /* Header e Filtros */
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .status { font-size: 12px; padding: 5px 10px; border-radius: 15px; transition: 0.3s; }
+        .online { background: #dcfce7; color: #166534; }
+        .offline { background: #fee2e2; color: #991b1b; }
+        
+        .filtros { display: flex; gap: 8px; margin-bottom: 15px; }
+        input[type="month"], .busca { padding: 12px; border: 1px solid #ddd; border-radius: 10px; flex: 1; outline: none; }
+        
+        /* Cards */
+        .card-saldo { background: #fff; padding: 20px; border-radius: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 15px; }
+        .valor-principal { font-size: 28px; font-weight: bold; margin: 5px 0; }
+        .positivo { color: #22c55e; } .negativo { color: #ef4444; }
+        
+        /* Lista de Itens */
+        .item { background: #fff; padding: 12px; border-radius: 15px; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .mini-foto { width: 50px; height: 50px; border-radius: 8px; background: #eee; object-fit: cover; cursor: zoom-in; }
+        .info { flex: 1; }
+        .info strong { display: block; font-size: 15px; }
+        .info small { color: #777; font-size: 12px; }
+        
+        /* Tabs */
+        .tabs { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; display: flex; padding: 10px; border-top: 1px solid #eee; z-index: 100; }
+        .tab { flex: 1; text-align: center; font-size: 12px; color: #888; cursor: pointer; border: none; background: none; }
+        .tab.active { color: #007bff; font-weight: bold; }
+        .tab-icon { font-size: 20px; display: block; }
+
+        /* Modais */
+        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; z-index: 200; backdrop-filter: blur(2px); }
+        .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 400px; background: #fff; border-radius: 20px; padding: 20px; display: none; z-index: 300; }
+        .modal.active, .overlay.active { display: block; }
+        input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 10px; }
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .btn-save { background: #007bff; color: #fff; }
+        .btn-cancel { background: #f3f4f6; color: #444; }
+        
+        #chartArea { background: #fff; padding: 15px; border-radius: 20px; margin-top: 10px; }
     </style>
 </head>
 <body>
+
     <div class="container">
-        <div style="display: flex; align-items: center; margin-bottom: 16px;">
-            <h1>💰 Orçamento</h1>
-            <div id="status" class="status">Carregando...</div>
+        <div class="header">
+            <h3>Finanças 💸</h3>
+            <div id="statusLabel" class="status online">Online</div>
         </div>
-        
-        <div id="content"></div>
-        
-        <div class="tab-bar">
-            <div class="tab-item active" data-tab="resumo"><span class="tab-icon">📊</span><span>Resumo</span></div>
-            <div class="tab-item" data-tab="lista"><span class="tab-icon">📋</span><span>Lançamentos</span></div>
-            <div class="tab-item" data-tab="adicionar"><span class="tab-icon">➕</span><span>Adicionar</span></div>
+
+        <div class="filtros">
+            <input type="month" id="filtroMes" onchange="mudarMes(this.value)">
+            <input type="text" id="campoBusca" class="busca" placeholder="🔍 Buscar..." oninput="buscaDinamica(this.value)">
         </div>
+
+        <div id="view-resumo">
+            <div class="card-saldo">
+                <small>Saldo do Mês</small>
+                <div id="saldoTotal" class="valor-principal">R$ 0,00</div>
+                <div style="display:flex; justify-content: space-between; margin-top:10px; font-size:13px;">
+                    <span class="positivo">Receitas: <b id="totalRec">R$ 0</b></span>
+                    <span class="negativo">Despesas: <b id="totalDes">R$ 0</b></span>
+                </div>
+            </div>
+            <div id="listaRecentes"></div>
+        </div>
+
+        <div id="view-grafico" style="display:none;">
+            <div id="chartArea">
+                <canvas id="meuGrafico"></canvas>
+            </div>
+        </div>
+
+        <button class="btn btn-cancel" onclick="exportarCSV()" style="margin-top:20px;">📥 Baixar Relatório (CSV)</button>
     </div>
-    
-    <div id="formModal" class="form-card">
-        <div class="form-title">
-            <span>Novo Lançamento</span>
-            <button class="close-btn" onclick="fecharForm()">×</button>
-        </div>
-        <div class="tipo-toggle">
-            <button class="tipo-btn active" data-tipo="receita" id="btnReceita">💰 Receita</button>
-            <button class="tipo-btn" data-tipo="despesa" id="btnDespesa">💸 Despesa</button>
-        </div>
-        <input type="date" id="data" value="">
-        <input type="text" id="categoria" placeholder="Categoria" value="Outros">
-        <input type="text" id="descricao" placeholder="Descrição" required>
-        <input type="number" id="valor" step="0.01" placeholder="Valor (R$)" required>
-        <div class="foto-preview" id="fotoPreview" onclick="document.getElementById('fotoInput').click()">
-            <span>📸 Toque para adicionar foto</span>
-        </div>
-        <input type="file" id="fotoInput" accept="image/*" style="display: none;">
-        <div style="display: flex; gap: 12px;">
-            <button class="btn btn-outline" onclick="fecharForm()">Cancelar</button>
-            <button class="btn btn-success" onclick="salvarLancamento()">Salvar</button>
-        </div>
+
+    <div class="tabs">
+        <button class="tab active" onclick="navegar('resumo')"><span class="tab-icon">📊</span>Resumo</button>
+        <button class="tab" onclick="abrirForm()"><span class="tab-icon">➕</span>Add</button>
+        <button class="tab" onclick="navegar('grafico')"><span class="tab-icon">📈</span>Gráfico</button>
     </div>
-    
-    <script src="app.js"></script>
+
+    <div class="overlay" id="overlay" onclick="fecharTudo()"></div>
+    <div class="modal" id="modalForm">
+        <h4 id="formTitulo">Novo Lançamento</h4>
+        <select id="tipo">
+            <option value="Receita">💰 Receita</option>
+            <option value="Despesa">💸 Despesa</option>
+        </select>
+        <input type="date" id="data">
+        <input type="text" id="categoria" placeholder="Categoria (Ex: Salário, Aluguel)">
+        <input type="text" id="descricao" placeholder="Descrição">
+        <input type="number" id="valor" step="0.01" placeholder="Valor R$">
+        
+        <div id="previewContainer" style="text-align:center;">
+            <img id="imgPrev" src="" style="display:none; width:100px; margin:10px auto; border-radius:10px;">
+        </div>
+        <button class="btn btn-cancel" onclick="document.getElementById('inputFoto').click()">📸 Adicionar Foto</button>
+        <input type="file" id="inputFoto" accept="image/*" style="display:none" onchange="tratarFoto(this)">
+        
+        <button class="btn btn-save" onclick="salvar()">Salvar</button>
+        <button class="btn btn-cancel" onclick="fecharTudo()">Voltar</button>
+    </div>
+
+    <div class="modal" id="modalZoom" style="padding:10px; text-align:center;">
+        <img id="fotoGrande" src="" style="width:100%; border-radius:15px;">
+        <button class="btn btn-cancel" onclick="fecharTudo()">Fechar</button>
+    </div>
+
+    <script src="apps.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('serviço-worker.js');
+        }
+    </script>
 </body>
 </html>
