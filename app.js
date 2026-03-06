@@ -181,7 +181,6 @@ async function excluir(id) {
             // Tenta deletar na API também
             fetch(API_URL, {
                 method: 'POST',
-                mode: 'no-cors',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'delete', id: id })
             }).catch(console.warn);
@@ -235,6 +234,19 @@ window.addEventListener('online', atualizarStatus);
 window.addEventListener('offline', atualizarStatus);
 atualizarStatus();
 
+// Função para verificar se um ID existe na API
+async function verificarExistenciaNaAPI(id) {
+    try {
+        const response = await fetch(API_URL + `?action=get&id=${encodeURIComponent(id)}`);
+        if (!response.ok) return false;
+        const result = await response.json();
+        return result.data !== null;
+    } catch (err) {
+        console.warn('Erro ao verificar existência:', err);
+        return false;
+    }
+}
+
 // Sincronização aprimorada
 async function sincronizar() {
     console.log('Iniciando sincronização...');
@@ -274,15 +286,6 @@ async function sincronizar() {
                 sinc: 1
             };
 
-            // Se já existe localmente, precisamos decidir qual versão é mais recente?
-            // Como não temos timestamp, vamos dar prioridade ao servidor (API) para manter consistência.
-            // Mas se o local tem sinc=0 (não enviado), significa que foi alterado offline e deve ser enviado depois.
-            // Por enquanto, apenas sobrescrevemos com o da API se o local não for mais recente? 
-            // Para simplificar, vamos sempre sobrescrever com o da API, pois a API é a fonte da verdade.
-            // Porém, se o local foi alterado offline (sinc=0) e ainda não subiu, precisamos manter e depois enviar.
-            // Então, só sobrescrevemos se o local estiver sincronizado (sinc=1) ou não existir.
-            // Vamos implementar: se local existe e sinc === 0, NÃO sobrescrevemos (pois tem alteração local não enviada).
-            // Se local não existe ou sinc === 1, podemos sobrescrever com o da API.
             const localItem = localMap.get(id);
             if (!localItem || localItem.sinc === 1) {
                 await store.put(apiData);
@@ -296,9 +299,12 @@ async function sincronizar() {
         console.log('Itens locais não sincronizados:', unsynced.length);
 
         for (const item of unsynced) {
+            // Verifica se o ID já existe na API para decidir entre create ou update
+            const existe = await verificarExistenciaNaAPI(item.id);
+            const action = existe ? 'update' : 'create';
+
             const payload = {
-                action: 'create', // ou update? Vamos usar create, mas se já existir na API, pode dar conflito. Melhor usar 'update' se soubermos que existe.
-                // Como não sabemos, vamos tentar enviar e a API pode tratar.
+                action: action,
                 id: item.id,
                 data: item.data,
                 categoria: item.categoria,
@@ -310,18 +316,25 @@ async function sincronizar() {
             };
 
             try {
-                await fetch(API_URL, {
+                const response = await fetch(API_URL, {
                     method: 'POST',
-                    mode: 'no-cors', // não podemos ler resposta, mas assumimos sucesso
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const result = await response.json();
+                if (result.meta && result.meta.status >= 400) {
+                    throw new Error(result.meta.error || 'Erro na API');
+                }
                 // Marca como sincronizado
                 item.sinc = 1;
                 await store.put(item);
-                console.log('Item enviado:', item.id);
+                console.log(`Item ${item.id} ${action}do com sucesso.`);
             } catch (err) {
                 console.warn('Erro ao enviar item', item.id, err);
+                alert(`Falha ao sincronizar item ${item.descricao}. Verifique sua conexão e a planilha.`);
             }
         }
 
@@ -331,6 +344,7 @@ async function sincronizar() {
         carregarDados();
     } catch (err) {
         console.error('Erro na sincronização:', err);
+        alert('Erro na sincronização. Verifique se a planilha tem a coluna "fotoBase64".');
     }
 }
 
