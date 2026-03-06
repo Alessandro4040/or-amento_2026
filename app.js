@@ -1,4 +1,4 @@
-const API_URL = 'https://script.google.com/macros/s/AKfycbycxDj4mmekmrcelSJq0vO4um88FGlp1T3OlWzU6bA1lJowiQI1hfZj-hNTmT8GOjEy/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbzznOENTtkoN5iKlt0tmk6D5jfI9d3_dL-5bCBz6dzQB_x9qCy45ABHEU6etjf8cioX/exec';
 const DB_NAME = 'financas_db';
 const STORE = 'lançamentos';
 
