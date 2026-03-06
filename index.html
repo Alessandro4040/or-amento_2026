@@ -35,6 +35,23 @@
         .btn-cancel { background: #f3f4f6; color: #444; }
         .edit-link { color: blue; cursor: pointer; margin-right: 8px; }
         .delete-link { color: red; cursor: pointer; }
+
+        /* Modal de zoom melhorado */
+        #modalZoom .modal-content {
+            text-align: center;
+        }
+        #modalZoom img {
+            max-width: 100%;
+            max-height: 70vh;
+            object-fit: contain;
+            cursor: pointer;
+            border-radius: 10px;
+        }
+        .zoom-hint {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -85,8 +102,11 @@
     </div>
 
     <div class="modal" id="modalZoom">
-        <img id="fotoGrande" src="" style="width:100%; border-radius:15px;">
-        <button class="btn btn-cancel" onclick="fecharTudo()">Fechar</button>
+        <div class="modal-content">
+            <img id="fotoGrande" src="" alt="Foto" onclick="abrirFotoNovaAba()">
+            <div class="zoom-hint">Clique na imagem para abrir em tamanho real</div>
+            <button class="btn btn-cancel" onclick="fecharTudo()">Fechar</button>
+        </div>
     </div>
 
     <script src="app.js"></script>
