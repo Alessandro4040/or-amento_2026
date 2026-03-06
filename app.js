@@ -1,4 +1,4 @@
-const API_URL = 'https://script.google.com/macros/s/AKfycbzznOENTtkoN5iKlt0tmk6D5jfI9d3_dL-5bCBz6dzQB_x9qCy45ABHEU6etjf8cioX/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbycxDj4mmekmrcelSJq0vO4um88FGlp1T3OlWzU6bA1lJowiQI1hfZj-hNTmT8GOjEy/exec';
 const DB_NAME = 'financas_db';
 const STORE = 'lançamentos';
 
@@ -9,7 +9,7 @@ let termoBusca = '';
 let fotoBase64 = null;
 let editId = null;
 
-// Utilitário para converter YYYY-MM-DD -> DD-MM-YYYY (somente para exibição)
+// Utilitário para formatar data
 function formatarDataBR(dataStr) {
     if (!dataStr) return '';
     let dataLimpa = dataStr.includes('T') ? dataStr.split('T')[0] : dataStr;
@@ -34,7 +34,6 @@ request.onsuccess = e => {
     carregarDados();
 };
 
-// Carrega dados do IndexedDB
 async function carregarDados() {
     const tx = db.transaction(STORE, 'readonly');
     const store = tx.objectStore(STORE);
@@ -45,7 +44,6 @@ async function carregarDados() {
     };
 }
 
-// Atualiza a lista na tela
 function atualizarTela() {
     const lista = document.getElementById('listaRecentes');
     const filtrados = lancamentos.filter(i => 
@@ -82,11 +80,9 @@ function atualizarTela() {
     document.getElementById('totalDes').innerText = `R$ ${desp.toFixed(2)}`;
 }
 
-// Filtros
+// Eventos
 document.getElementById('filtroMes').onchange = e => { mesAtual = e.target.value; atualizarTela(); };
 document.getElementById('campoBusca').oninput = e => { termoBusca = e.target.value.toLowerCase(); atualizarTela(); };
-
-// Navegação entre abas
 document.getElementById('tabResumo').onclick = () => navegar('resumo');
 document.getElementById('tabGrafico').onclick = () => navegar('grafico');
 document.getElementById('tabAdd').onclick = () => {
@@ -102,7 +98,6 @@ function navegar(view) {
     if (view === 'grafico') renderGrafico();
 }
 
-// Abre o modal de formulário (novo ou edição)
 function abrirForm(item = null) {
     if (item) {
         document.getElementById('tipo').value = item.tipo;
@@ -125,13 +120,11 @@ function abrirForm(item = null) {
     document.getElementById('overlay').classList.add('active');
 }
 
-// Fecha todos os modais
 function fecharTudo() {
     document.querySelectorAll('.modal, .overlay').forEach(el => el.classList.remove('active'));
     editId = null;
 }
 
-// Converte foto para Base64
 document.getElementById('inputFoto').addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -142,7 +135,6 @@ document.getElementById('inputFoto').addEventListener('change', function(e) {
     reader.readAsDataURL(file);
 });
 
-// Salvar (criar ou atualizar)
 async function salvar() {
     if (!document.getElementById('data').value || !document.getElementById('valor').value) {
         alert('Preencha data e valor!');
@@ -170,7 +162,6 @@ async function salvar() {
     };
 }
 
-// Editar um lançamento existente
 function editar(id) {
     const item = lancamentos.find(l => l.id === id);
     if (item) {
@@ -180,7 +171,6 @@ function editar(id) {
     }
 }
 
-// Excluir lançamento
 async function excluir(id) {
     if (!confirm('Excluir lançamento?')) return;
     const tx = db.transaction(STORE, 'readwrite');
@@ -188,6 +178,7 @@ async function excluir(id) {
     tx.oncomplete = () => {
         carregarDados();
         if (navigator.onLine) {
+            // Tenta deletar na API também
             fetch(API_URL, {
                 method: 'POST',
                 mode: 'no-cors',
@@ -198,7 +189,6 @@ async function excluir(id) {
     };
 }
 
-// Zoom na foto (abre modal)
 function verFoto(src) {
     if (!src) return;
     document.getElementById('fotoGrande').src = src;
@@ -206,7 +196,6 @@ function verFoto(src) {
     document.getElementById('overlay').classList.add('active');
 }
 
-// Gráfico de despesas por categoria
 function renderGrafico() {
     const filtrados = lancamentos.filter(i => i.data.startsWith(mesAtual) && i.tipo === 'Despesa');
     const caps = {};
@@ -220,7 +209,6 @@ function renderGrafico() {
     });
 }
 
-// Exportar CSV do mês atual (com data DD-MM-YYYY)
 function exportarCSV() {
     let csv = 'Data;Tipo;Descricao;Valor\n';
     lancamentos.filter(i => i.data.startsWith(mesAtual)).forEach(i => {
@@ -233,7 +221,6 @@ function exportarCSV() {
     a.click();
 }
 
-// Status Online/Offline
 function atualizarStatus() {
     const label = document.getElementById('statusLabel');
     if (navigator.onLine) {
@@ -248,72 +235,106 @@ window.addEventListener('online', atualizarStatus);
 window.addEventListener('offline', atualizarStatus);
 atualizarStatus();
 
-// Sincronização com a API do Google Sheets
+// Sincronização aprimorada
 async function sincronizar() {
-    console.log('Sincronizando...');
+    console.log('Iniciando sincronização...');
     try {
-        // Primeiro, busca dados da API para mesclar
+        // 1. Busca todos os registros da API
         const response = await fetch(API_URL + '?action=list');
         if (!response.ok) {
-            throw new Error('Erro ao buscar dados da API');
+            throw new Error('Erro ao buscar dados da API: ' + response.status);
         }
         const result = await response.json();
-        if (result.data && Array.isArray(result.data)) {
-            const apiRecords = result.data;
-            const tx = db.transaction(STORE, 'readwrite');
-            const store = tx.objectStore(STORE);
-            
-            // Insere ou atualiza registros vindos da API
-            for (const apiItem of apiRecords) {
-                const localItem = {
-                    id: apiItem.id.toString(),
-                    tipo: apiItem.tipo,
-                    data: apiItem.data,
-                    categoria: apiItem.categoria,
-                    descricao: apiItem.descricao,
-                    valor: parseFloat(apiItem.valor),
-                    foto: apiItem.fotoBase64 || '',
-                    sinc: 1 // já sincronizado
-                };
-                await store.put(localItem);
+        if (!result.data || !Array.isArray(result.data)) {
+            throw new Error('Resposta da API inválida');
+        }
+
+        const apiRecords = result.data;
+        console.log('Registros da API:', apiRecords.length);
+
+        // 2. Abre transação para ler e escrever no IndexedDB
+        const tx = db.transaction(STORE, 'readwrite');
+        const store = tx.objectStore(STORE);
+
+        // Mapa de IDs existentes localmente
+        const localMap = new Map();
+        lancamentos.forEach(l => localMap.set(l.id, l));
+
+        // 3. Para cada registro da API, insere ou atualiza no banco local
+        for (const apiItem of apiRecords) {
+            const id = apiItem.id.toString();
+            const apiData = {
+                id: id,
+                tipo: apiItem.tipo,
+                data: apiItem.data,
+                categoria: apiItem.categoria,
+                descricao: apiItem.descricao,
+                valor: parseFloat(apiItem.valor),
+                foto: apiItem.fotoBase64 || '',
+                sinc: 1
+            };
+
+            // Se já existe localmente, precisamos decidir qual versão é mais recente?
+            // Como não temos timestamp, vamos dar prioridade ao servidor (API) para manter consistência.
+            // Mas se o local tem sinc=0 (não enviado), significa que foi alterado offline e deve ser enviado depois.
+            // Por enquanto, apenas sobrescrevemos com o da API se o local não for mais recente? 
+            // Para simplificar, vamos sempre sobrescrever com o da API, pois a API é a fonte da verdade.
+            // Porém, se o local foi alterado offline (sinc=0) e ainda não subiu, precisamos manter e depois enviar.
+            // Então, só sobrescrevemos se o local estiver sincronizado (sinc=1) ou não existir.
+            // Vamos implementar: se local existe e sinc === 0, NÃO sobrescrevemos (pois tem alteração local não enviada).
+            // Se local não existe ou sinc === 1, podemos sobrescrever com o da API.
+            const localItem = localMap.get(id);
+            if (!localItem || localItem.sinc === 1) {
+                await store.put(apiData);
+            } else {
+                console.log(`Item ${id} possui alteração local não enviada. Mantendo local.`);
             }
-            
-            // Agora, envia os registros locais não sincronizados (sinc === 0)
-            const unsynced = lancamentos.filter(l => l.sinc === 0);
-            for (const item of unsynced) {
-                const payload = {
-                    action: 'create',
-                    id: item.id,
-                    data: item.data,
-                    categoria: item.categoria,
-                    descricao: item.descricao,
-                    valor: item.valor,
-                    tipo: item.tipo,
-                    temFoto: item.foto ? 'Sim' : 'Não',
-                    fotoBase64: item.foto || ''
-                };
+        }
+
+        // 4. Agora, envia todos os itens locais com sinc === 0 para a API
+        const unsynced = lancamentos.filter(l => l.sinc === 0);
+        console.log('Itens locais não sincronizados:', unsynced.length);
+
+        for (const item of unsynced) {
+            const payload = {
+                action: 'create', // ou update? Vamos usar create, mas se já existir na API, pode dar conflito. Melhor usar 'update' se soubermos que existe.
+                // Como não sabemos, vamos tentar enviar e a API pode tratar.
+                id: item.id,
+                data: item.data,
+                categoria: item.categoria,
+                descricao: item.descricao,
+                valor: item.valor,
+                tipo: item.tipo,
+                temFoto: item.foto ? 'Sim' : 'Não',
+                fotoBase64: item.foto || ''
+            };
+
+            try {
                 await fetch(API_URL, {
                     method: 'POST',
-                    mode: 'no-cors',
+                    mode: 'no-cors', // não podemos ler resposta, mas assumimos sucesso
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
                 // Marca como sincronizado
                 item.sinc = 1;
                 await store.put(item);
+                console.log('Item enviado:', item.id);
+            } catch (err) {
+                console.warn('Erro ao enviar item', item.id, err);
             }
-            
-            await tx.complete;
-            console.log('Sincronização concluída');
-            // Recarrega os dados para exibir os novos da API
-            carregarDados();
         }
+
+        await tx.complete;
+        console.log('Sincronização concluída');
+        // Recarrega os dados do IndexedDB para refletir as mudanças
+        carregarDados();
     } catch (err) {
-        console.warn('Erro na sincronização:', err);
+        console.error('Erro na sincronização:', err);
     }
 }
 
-// Registra o Service Worker
+// Registra Service Worker
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('service-worker.js');
 }
