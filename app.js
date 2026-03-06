@@ -7,7 +7,17 @@ let lancamentos = [];
 let mesAtual = new Date().toISOString().substring(0, 7);
 let termoBusca = '';
 let fotoBase64 = null;
-let editId = null; // Para edição
+let editId = null;
+
+// Utilitário para formatar data (remove o horário se houver)
+function formatarData(dataStr) {
+    if (!dataStr) return '';
+    // Se for uma string ISO com 'T', pega só a parte da data
+    if (dataStr.includes('T')) {
+        return dataStr.split('T')[0];
+    }
+    return dataStr; // já deve estar no formato YYYY-MM-DD
+}
 
 // Inicializar Banco de Dados
 const request = indexedDB.open(DB_NAME, 4);
@@ -50,7 +60,7 @@ function atualizarTela() {
                 <img class="mini-foto" src="${item.foto || ''}" onclick="verFoto('${item.foto}')">
                 <div class="info">
                     <strong>${item.descricao}</strong>
-                    <small>${item.categoria} • ${item.data}</small>
+                    <small>${item.categoria} • ${formatarData(item.data)}</small>
                 </div>
                 <div style="text-align:right">
                     <div class="${item.tipo === 'Receita' ? 'positivo' : 'negativo'}">R$ ${v.toFixed(2)}</div>
@@ -87,14 +97,14 @@ function navegar(view) {
 function abrirForm(item = null) {
     if (item) {
         document.getElementById('tipo').value = item.tipo;
-        document.getElementById('data').value = item.data;
+        document.getElementById('data').value = formatarData(item.data); // Garante formato YYYY-MM-DD
         document.getElementById('categoria').value = item.categoria;
         document.getElementById('descricao').value = item.descricao;
         document.getElementById('valor').value = item.valor;
         fotoBase64 = item.foto || null;
     } else {
         document.getElementById('tipo').value = 'Receita';
-        document.getElementById('data').value = new Date().toISOString().substring(0, 10);
+        document.getElementById('data').value = new Date().toISOString().split('T')[0];
         document.getElementById('categoria').value = '';
         document.getElementById('descricao').value = '';
         document.getElementById('valor').value = '';
@@ -130,12 +140,12 @@ async function salvar() {
     const item = {
         id: editId || 'ID' + Date.now(),
         tipo: document.getElementById('tipo').value,
-        data: document.getElementById('data').value,
+        data: document.getElementById('data').value, // já vem como YYYY-MM-DD
         categoria: document.getElementById('categoria').value || 'Geral',
         descricao: document.getElementById('descricao').value || 'Sem título',
         valor: parseFloat(document.getElementById('valor').value),
         foto: fotoBase64,
-        sinc: 0 // não sincronizado
+        sinc: 0
     };
 
     const tx = db.transaction(STORE, 'readwrite');
@@ -144,7 +154,7 @@ async function salvar() {
     tx.oncomplete = () => {
         fecharTudo();
         carregarDados();
-        if (navigator.onLine) sincronizar(); // tenta enviar imediatamente
+        if (navigator.onLine) sincronizar();
     };
 }
 
@@ -166,7 +176,6 @@ async function excluir(id) {
     tx.oncomplete = () => {
         carregarDados();
         if (navigator.onLine) {
-            // Se estiver online, deleta também na API
             fetch(API_URL, {
                 method: 'POST',
                 mode: 'no-cors',
@@ -203,7 +212,7 @@ function renderGrafico() {
 function exportarCSV() {
     let csv = 'Data;Tipo;Descricao;Valor\n';
     lancamentos.filter(i => i.data.startsWith(mesAtual)).forEach(i => {
-        csv += `${i.data};${i.tipo};${i.descricao};${i.valor}\n`;
+        csv += `${formatarData(i.data)};${i.tipo};${i.descricao};${i.valor}\n`;
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
@@ -234,9 +243,8 @@ async function sincronizar() {
         // 1. Envia todos os registros locais não sincronizados (sinc === 0)
         const unsynced = lancamentos.filter(l => l.sinc === 0);
         for (const item of unsynced) {
-            // Prepara dados para API (mapeia campos)
             const payload = {
-                action: 'create', // ou update? Vamos usar create para novos, mas se já existir na API, pode dar conflito.
+                action: 'create',
                 id: item.id,
                 data: item.data,
                 categoria: item.categoria,
@@ -246,14 +254,12 @@ async function sincronizar() {
                 temFoto: item.foto ? 'Sim' : 'Não',
                 fotoBase64: item.foto || ''
             };
-            // Tenta enviar
             await fetch(API_URL, {
                 method: 'POST',
-                mode: 'no-cors', // importante para evitar CORS
+                mode: 'no-cors',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            // Marca como sincronizado
             item.sinc = 1;
             const tx = db.transaction(STORE, 'readwrite');
             tx.objectStore(STORE).put(item);
@@ -268,7 +274,6 @@ async function sincronizar() {
             const tx = db.transaction(STORE, 'readwrite');
             const store = tx.objectStore(STORE);
             for (const apiItem of apiRecords) {
-                // Mapeia campos da API para o formato local
                 const localItem = {
                     id: apiItem.id.toString(),
                     tipo: apiItem.tipo,
@@ -277,13 +282,13 @@ async function sincronizar() {
                     descricao: apiItem.descricao,
                     valor: parseFloat(apiItem.valor),
                     foto: apiItem.fotoBase64 || '',
-                    sinc: 1 // já sincronizado
+                    sinc: 1
                 };
                 await store.put(localItem);
             }
             await tx.complete;
             console.log('Sincronização concluída');
-            carregarDados(); // recarrega a tela
+            carregarDados();
         }
     } catch (err) {
         console.warn('Erro na sincronização:', err);
