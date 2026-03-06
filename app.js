@@ -12,13 +12,12 @@ let editId = null;
 // Utilitário para converter YYYY-MM-DD -> DD-MM-YYYY (somente para exibição)
 function formatarDataBR(dataStr) {
     if (!dataStr) return '';
-    // Extrai apenas a parte da data se vier com horário
     let dataLimpa = dataStr.includes('T') ? dataStr.split('T')[0] : dataStr;
     if (/^\d{4}-\d{2}-\d{2}$/.test(dataLimpa)) {
         const [ano, mes, dia] = dataLimpa.split('-');
         return `${dia}-${mes}-${ano}`;
     }
-    return dataLimpa; // fallback
+    return dataLimpa;
 }
 
 // Inicializar IndexedDB
@@ -106,9 +105,7 @@ function navegar(view) {
 // Abre o modal de formulário (novo ou edição)
 function abrirForm(item = null) {
     if (item) {
-        // Edição: preenche os campos
         document.getElementById('tipo').value = item.tipo;
-        // Para o input date, precisamos do valor ISO (YYYY-MM-DD)
         let dataIso = item.data;
         if (dataIso.includes('T')) dataIso = dataIso.split('T')[0];
         document.getElementById('data').value = dataIso;
@@ -117,7 +114,6 @@ function abrirForm(item = null) {
         document.getElementById('valor').value = item.valor;
         fotoBase64 = item.foto || null;
     } else {
-        // Novo: campos em branco, data atual
         document.getElementById('tipo').value = 'Receita';
         document.getElementById('data').value = new Date().toISOString().split('T')[0];
         document.getElementById('categoria').value = '';
@@ -156,12 +152,12 @@ async function salvar() {
     const item = {
         id: editId || 'ID' + Date.now(),
         tipo: document.getElementById('tipo').value,
-        data: document.getElementById('data').value, // já YYYY-MM-DD
+        data: document.getElementById('data').value,
         categoria: document.getElementById('categoria').value || 'Geral',
         descricao: document.getElementById('descricao').value || 'Sem título',
         valor: parseFloat(document.getElementById('valor').value),
         foto: fotoBase64,
-        sinc: 0 // pendente de sincronização
+        sinc: 0
     };
 
     const tx = db.transaction(STORE, 'readwrite');
@@ -202,7 +198,7 @@ async function excluir(id) {
     };
 }
 
-// Zoom na foto
+// Zoom na foto (abre modal)
 function verFoto(src) {
     if (!src) return;
     document.getElementById('fotoGrande').src = src;
@@ -224,7 +220,7 @@ function renderGrafico() {
     });
 }
 
-// Exportar CSV do mês atual (com data no formato DD-MM-YYYY)
+// Exportar CSV do mês atual (com data DD-MM-YYYY)
 function exportarCSV() {
     let csv = 'Data;Tipo;Descricao;Valor\n';
     lancamentos.filter(i => i.data.startsWith(mesAtual)).forEach(i => {
@@ -256,40 +252,18 @@ atualizarStatus();
 async function sincronizar() {
     console.log('Sincronizando...');
     try {
-        // Envia pendentes (sinc = 0)
-        const unsynced = lancamentos.filter(l => l.sinc === 0);
-        for (const item of unsynced) {
-            const payload = {
-                action: 'create',
-                id: item.id,
-                data: item.data,
-                categoria: item.categoria,
-                descricao: item.descricao,
-                valor: item.valor,
-                tipo: item.tipo,
-                temFoto: item.foto ? 'Sim' : 'Não',
-                fotoBase64: item.foto || ''
-            };
-            await fetch(API_URL, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            // Marca como sincronizado
-            item.sinc = 1;
-            const tx = db.transaction(STORE, 'readwrite');
-            tx.objectStore(STORE).put(item);
-            await tx.complete;
-        }
-
-        // Baixa todos os registros da API
+        // Primeiro, busca dados da API para mesclar
         const response = await fetch(API_URL + '?action=list');
+        if (!response.ok) {
+            throw new Error('Erro ao buscar dados da API');
+        }
         const result = await response.json();
         if (result.data && Array.isArray(result.data)) {
             const apiRecords = result.data;
             const tx = db.transaction(STORE, 'readwrite');
             const store = tx.objectStore(STORE);
+            
+            // Insere ou atualiza registros vindos da API
             for (const apiItem of apiRecords) {
                 const localItem = {
                     id: apiItem.id.toString(),
@@ -299,12 +273,39 @@ async function sincronizar() {
                     descricao: apiItem.descricao,
                     valor: parseFloat(apiItem.valor),
                     foto: apiItem.fotoBase64 || '',
-                    sinc: 1
+                    sinc: 1 // já sincronizado
                 };
                 await store.put(localItem);
             }
+            
+            // Agora, envia os registros locais não sincronizados (sinc === 0)
+            const unsynced = lancamentos.filter(l => l.sinc === 0);
+            for (const item of unsynced) {
+                const payload = {
+                    action: 'create',
+                    id: item.id,
+                    data: item.data,
+                    categoria: item.categoria,
+                    descricao: item.descricao,
+                    valor: item.valor,
+                    tipo: item.tipo,
+                    temFoto: item.foto ? 'Sim' : 'Não',
+                    fotoBase64: item.foto || ''
+                };
+                await fetch(API_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                // Marca como sincronizado
+                item.sinc = 1;
+                await store.put(item);
+            }
+            
             await tx.complete;
             console.log('Sincronização concluída');
+            // Recarrega os dados para exibir os novos da API
             carregarDados();
         }
     } catch (err) {
