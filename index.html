@@ -12,7 +12,7 @@
         body { background: #f0f2f5; padding: 15px; padding-bottom: 90px; color: #333; }
         .container { max-width: 500px; margin: 0 auto; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .status { font-size: 12px; padding: 5px 10px; border-radius: 15px; font-weight: bold; }
+        .status { font-size: 12px; padding: 5px 10px; border-radius: 15px; }
         .online { background: #dcfce7; color: #166534; }
         .offline { background: #fee2e2; color: #991b1b; }
         .filtros { display: flex; gap: 8px; margin-bottom: 15px; }
@@ -29,10 +29,12 @@
         .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; z-index: 200; }
         .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 400px; background: #fff; border-radius: 20px; padding: 20px; display: none; z-index: 300; }
         .modal.active, .overlay.active { display: block; }
-        input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; }
+        input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 10px; }
         .btn { width: 100%; padding: 12px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 10px; }
         .btn-save { background: #007bff; color: #fff; }
         .btn-cancel { background: #f3f4f6; color: #444; }
+        .edit-link { color: blue; cursor: pointer; margin-right: 8px; }
+        .delete-link { color: red; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -56,31 +58,29 @@
             </div>
             <div id="listaRecentes"></div>
         </div>
-        <div id="view-grafico" style="display:none; background:#fff; padding:20px; border-radius:20px;">
+        <div id="view-grafico" style="display:none;">
             <canvas id="meuGrafico"></canvas>
         </div>
         <button class="btn btn-cancel" onclick="exportarCSV()">📥 Baixar Relatório (CSV)</button>
     </div>
 
     <div class="tabs">
-        <button class="tab active" onclick="navegar('resumo', this)">📊 Resumo</button>
-        <button class="tab" onclick="abrirForm()">➕ Add</button>
-        <button class="tab" onclick="navegar('grafico', this)">📈 Gráfico</button>
+        <button class="tab active" id="tabResumo">📊 Resumo</button>
+        <button class="tab" id="tabAdd">➕ Add</button>
+        <button class="tab" id="tabGrafico">📈 Gráfico</button>
     </div>
 
-    <div class="overlay" id="overlay" onclick="fecharTudo()"></div>
+    <div class="overlay" id="overlay"></div>
     <div class="modal" id="modalForm">
-        <h4 id="formTitulo">Novo Lançamento</h4>
-        <input type="hidden" id="editId">
+        <h4 id="formTitle">Novo Lançamento</h4>
         <select id="tipo"><option value="Receita">Receita</option><option value="Despesa">Despesa</option></select>
         <input type="date" id="data">
         <input type="text" id="categoria" placeholder="Categoria">
         <input type="text" id="descricao" placeholder="Descrição">
-        <input type="number" id="valor" step="0.01" placeholder="Valor R$">
-        <img id="imgPrev" src="" style="display:none; width:80px; margin:10px auto; border-radius:10px;">
+        <input type="number" id="valor" placeholder="Valor R$">
         <button class="btn btn-cancel" onclick="document.getElementById('inputFoto').click()">📸 Foto</button>
-        <input type="file" id="inputFoto" accept="image/*" style="display:none" onchange="tratarFoto(this)">
-        <button class="btn btn-save" onclick="salvar()">Salvar</button>
+        <input type="file" id="inputFoto" accept="image/*" style="display:none">
+        <button class="btn btn-save" id="btnSalvar">Salvar</button>
         <button class="btn btn-cancel" onclick="fecharTudo()">Voltar</button>
     </div>
 
@@ -89,6 +89,6 @@
         <button class="btn btn-cancel" onclick="fecharTudo()">Fechar</button>
     </div>
 
-    <script src="apps.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
