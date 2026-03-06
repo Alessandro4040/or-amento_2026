@@ -9,21 +9,23 @@ let termoBusca = '';
 let fotoBase64 = null;
 let editId = null;
 
-// Utilitário para formatar data (remove o horário se houver)
+// Utilitário para garantir data no formato YYYY-MM-DD
 function formatarData(dataStr) {
     if (!dataStr) return '';
-    // Se for uma string ISO com 'T', pega só a parte da data
+    // Se vier com horário (ex: "2026-03-06T03:00:00.000Z"), extrai só a data
     if (dataStr.includes('T')) {
         return dataStr.split('T')[0];
     }
-    return dataStr; // já deve estar no formato YYYY-MM-DD
+    return dataStr; // já deve estar OK
 }
 
-// Inicializar Banco de Dados
+// Inicializar IndexedDB
 const request = indexedDB.open(DB_NAME, 4);
 request.onupgradeneeded = e => {
     db = e.target.result;
-    if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
+    if (!db.objectStoreNames.contains(STORE)) {
+        db.createObjectStore(STORE, { keyPath: 'id' });
+    }
 };
 request.onsuccess = e => {
     db = e.target.result;
@@ -31,6 +33,7 @@ request.onsuccess = e => {
     carregarDados();
 };
 
+// Carrega dados do IndexedDB
 async function carregarDados() {
     const tx = db.transaction(STORE, 'readonly');
     const store = tx.objectStore(STORE);
@@ -41,6 +44,7 @@ async function carregarDados() {
     };
 }
 
+// Atualiza a lista na tela
 function atualizarTela() {
     const lista = document.getElementById('listaRecentes');
     const filtrados = lancamentos.filter(i => 
@@ -51,7 +55,7 @@ function atualizarTela() {
     let rec = 0, desp = 0;
     lista.innerHTML = '';
 
-    filtrados.sort((a,b) => b.data.localeCompare(a.data)).forEach(item => {
+    filtrados.sort((a, b) => b.data.localeCompare(a.data)).forEach(item => {
         const v = parseFloat(item.valor) || 0;
         item.tipo === 'Receita' ? rec += v : desp += v;
 
@@ -77,14 +81,18 @@ function atualizarTela() {
     document.getElementById('totalDes').innerText = `R$ ${desp.toFixed(2)}`;
 }
 
-// Eventos de Filtro
+// Filtros
 document.getElementById('filtroMes').onchange = e => { mesAtual = e.target.value; atualizarTela(); };
 document.getElementById('campoBusca').oninput = e => { termoBusca = e.target.value.toLowerCase(); atualizarTela(); };
 
-// Navegação
+// Navegação entre abas
 document.getElementById('tabResumo').onclick = () => navegar('resumo');
 document.getElementById('tabGrafico').onclick = () => navegar('grafico');
-document.getElementById('tabAdd').onclick = () => { editId = null; document.getElementById('formTitle').innerText = 'Novo Lançamento'; abrirForm(); };
+document.getElementById('tabAdd').onclick = () => {
+    editId = null;
+    document.getElementById('formTitle').innerText = 'Novo Lançamento';
+    abrirForm();
+};
 document.getElementById('btnSalvar').onclick = salvar;
 
 function navegar(view) {
@@ -93,16 +101,18 @@ function navegar(view) {
     if (view === 'grafico') renderGrafico();
 }
 
-// Abrir formulário (novo ou edição)
+// Abre o modal de formulário (novo ou edição)
 function abrirForm(item = null) {
     if (item) {
+        // Edição: preenche os campos
         document.getElementById('tipo').value = item.tipo;
-        document.getElementById('data').value = formatarData(item.data); // Garante formato YYYY-MM-DD
+        document.getElementById('data').value = formatarData(item.data);
         document.getElementById('categoria').value = item.categoria;
         document.getElementById('descricao').value = item.descricao;
         document.getElementById('valor').value = item.valor;
         fotoBase64 = item.foto || null;
     } else {
+        // Novo: campos em branco, data atual
         document.getElementById('tipo').value = 'Receita';
         document.getElementById('data').value = new Date().toISOString().split('T')[0];
         document.getElementById('categoria').value = '';
@@ -114,12 +124,13 @@ function abrirForm(item = null) {
     document.getElementById('overlay').classList.add('active');
 }
 
+// Fecha todos os modais
 function fecharTudo() {
     document.querySelectorAll('.modal, .overlay').forEach(el => el.classList.remove('active'));
     editId = null;
 }
 
-// Leitura da foto (conversão para Base64)
+// Converte foto para Base64
 document.getElementById('inputFoto').addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -140,12 +151,12 @@ async function salvar() {
     const item = {
         id: editId || 'ID' + Date.now(),
         tipo: document.getElementById('tipo').value,
-        data: document.getElementById('data').value, // já vem como YYYY-MM-DD
+        data: document.getElementById('data').value, // já YYYY-MM-DD
         categoria: document.getElementById('categoria').value || 'Geral',
         descricao: document.getElementById('descricao').value || 'Sem título',
         valor: parseFloat(document.getElementById('valor').value),
         foto: fotoBase64,
-        sinc: 0
+        sinc: 0 // pendente de sincronização
     };
 
     const tx = db.transaction(STORE, 'readwrite');
@@ -158,7 +169,7 @@ async function salvar() {
     };
 }
 
-// Editar
+// Editar um lançamento existente
 function editar(id) {
     const item = lancamentos.find(l => l.id === id);
     if (item) {
@@ -168,7 +179,7 @@ function editar(id) {
     }
 }
 
-// Excluir
+// Excluir lançamento
 async function excluir(id) {
     if (!confirm('Excluir lançamento?')) return;
     const tx = db.transaction(STORE, 'readwrite');
@@ -194,7 +205,7 @@ function verFoto(src) {
     document.getElementById('overlay').classList.add('active');
 }
 
-// Gráfico
+// Gráfico de despesas por categoria
 function renderGrafico() {
     const filtrados = lancamentos.filter(i => i.data.startsWith(mesAtual) && i.tipo === 'Despesa');
     const caps = {};
@@ -208,7 +219,7 @@ function renderGrafico() {
     });
 }
 
-// Exportar CSV
+// Exportar CSV do mês atual
 function exportarCSV() {
     let csv = 'Data;Tipo;Descricao;Valor\n';
     lancamentos.filter(i => i.data.startsWith(mesAtual)).forEach(i => {
@@ -236,11 +247,11 @@ window.addEventListener('online', atualizarStatus);
 window.addEventListener('offline', atualizarStatus);
 atualizarStatus();
 
-// Sincronização com a API
+// Sincronização com a API do Google Sheets
 async function sincronizar() {
     console.log('Sincronizando...');
     try {
-        // 1. Envia todos os registros locais não sincronizados (sinc === 0)
+        // Envia pendentes (sinc = 0)
         const unsynced = lancamentos.filter(l => l.sinc === 0);
         for (const item of unsynced) {
             const payload = {
@@ -260,13 +271,14 @@ async function sincronizar() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+            // Marca como sincronizado
             item.sinc = 1;
             const tx = db.transaction(STORE, 'readwrite');
             tx.objectStore(STORE).put(item);
             await tx.complete;
         }
 
-        // 2. Busca todos os registros da API
+        // Baixa todos os registros da API
         const response = await fetch(API_URL + '?action=list');
         const result = await response.json();
         if (result.data && Array.isArray(result.data)) {
@@ -295,7 +307,7 @@ async function sincronizar() {
     }
 }
 
-// Registro do Service Worker
+// Registra o Service Worker
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('service-worker.js');
 }
