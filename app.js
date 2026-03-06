@@ -9,14 +9,16 @@ let termoBusca = '';
 let fotoBase64 = null;
 let editId = null;
 
-// Utilitário para garantir data no formato YYYY-MM-DD
-function formatarData(dataStr) {
+// Utilitário para converter YYYY-MM-DD -> DD-MM-YYYY (somente para exibição)
+function formatarDataBR(dataStr) {
     if (!dataStr) return '';
-    // Se vier com horário (ex: "2026-03-06T03:00:00.000Z"), extrai só a data
-    if (dataStr.includes('T')) {
-        return dataStr.split('T')[0];
+    // Extrai apenas a parte da data se vier com horário
+    let dataLimpa = dataStr.includes('T') ? dataStr.split('T')[0] : dataStr;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dataLimpa)) {
+        const [ano, mes, dia] = dataLimpa.split('-');
+        return `${dia}-${mes}-${ano}`;
     }
-    return dataStr; // já deve estar OK
+    return dataLimpa; // fallback
 }
 
 // Inicializar IndexedDB
@@ -64,7 +66,7 @@ function atualizarTela() {
                 <img class="mini-foto" src="${item.foto || ''}" onclick="verFoto('${item.foto}')">
                 <div class="info">
                     <strong>${item.descricao}</strong>
-                    <small>${item.categoria} • ${formatarData(item.data)}</small>
+                    <small>${item.categoria} • ${formatarDataBR(item.data)}</small>
                 </div>
                 <div style="text-align:right">
                     <div class="${item.tipo === 'Receita' ? 'positivo' : 'negativo'}">R$ ${v.toFixed(2)}</div>
@@ -106,7 +108,10 @@ function abrirForm(item = null) {
     if (item) {
         // Edição: preenche os campos
         document.getElementById('tipo').value = item.tipo;
-        document.getElementById('data').value = formatarData(item.data);
+        // Para o input date, precisamos do valor ISO (YYYY-MM-DD)
+        let dataIso = item.data;
+        if (dataIso.includes('T')) dataIso = dataIso.split('T')[0];
+        document.getElementById('data').value = dataIso;
         document.getElementById('categoria').value = item.categoria;
         document.getElementById('descricao').value = item.descricao;
         document.getElementById('valor').value = item.valor;
@@ -219,11 +224,11 @@ function renderGrafico() {
     });
 }
 
-// Exportar CSV do mês atual
+// Exportar CSV do mês atual (com data no formato DD-MM-YYYY)
 function exportarCSV() {
     let csv = 'Data;Tipo;Descricao;Valor\n';
     lancamentos.filter(i => i.data.startsWith(mesAtual)).forEach(i => {
-        csv += `${formatarData(i.data)};${i.tipo};${i.descricao};${i.valor}\n`;
+        csv += `${formatarDataBR(i.data)};${i.tipo};${i.descricao};${i.valor}\n`;
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
