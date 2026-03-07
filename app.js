@@ -9,6 +9,7 @@ let termoBusca = '';
 let fotoBase64 = null;
 let editId = null;
 
+// Utilitário para converter YYYY-MM-DD -> DD-MM-YYYY (somente para exibição)
 function formatarDataBR(dataStr) {
     if (!dataStr) return '';
     let dataLimpa = dataStr.includes('T') ? dataStr.split('T')[0] : dataStr;
@@ -19,6 +20,7 @@ function formatarDataBR(dataStr) {
     return dataLimpa;
 }
 
+// Inicializar IndexedDB
 const request = indexedDB.open(DB_NAME, 4);
 request.onupgradeneeded = e => {
     db = e.target.result;
@@ -32,6 +34,7 @@ request.onsuccess = e => {
     carregarDados();
 };
 
+// Carrega dados do IndexedDB
 async function carregarDados() {
     const tx = db.transaction(STORE, 'readonly');
     const store = tx.objectStore(STORE);
@@ -42,6 +45,7 @@ async function carregarDados() {
     };
 }
 
+// Atualiza a lista na tela
 function atualizarTela() {
     const lista = document.getElementById('listaRecentes');
     const filtrados = lancamentos.filter(i => 
@@ -56,12 +60,9 @@ function atualizarTela() {
         const v = parseFloat(item.valor) || 0;
         item.tipo === 'Receita' ? rec += v : desp += v;
 
-        // Verifica se a foto é uma string base64 válida (começa com data:image)
-        const fotoSrc = (item.foto && item.foto.startsWith('data:image')) ? item.foto : '';
-
         lista.innerHTML += `
             <div class="item">
-                <img class="mini-foto" src="${fotoSrc}" onclick="verFoto('${fotoSrc}')">
+                <img class="mini-foto" src="${item.foto || ''}" onclick="verFoto('${item.foto}')">
                 <div class="info">
                     <strong>${item.descricao}</strong>
                     <small>${item.categoria} • ${formatarDataBR(item.data)}</small>
@@ -81,9 +82,11 @@ function atualizarTela() {
     document.getElementById('totalDes').innerText = `R$ ${desp.toFixed(2)}`;
 }
 
-// Eventos
+// Filtros
 document.getElementById('filtroMes').onchange = e => { mesAtual = e.target.value; atualizarTela(); };
 document.getElementById('campoBusca').oninput = e => { termoBusca = e.target.value.toLowerCase(); atualizarTela(); };
+
+// Navegação entre abas
 document.getElementById('tabResumo').onclick = () => navegar('resumo');
 document.getElementById('tabGrafico').onclick = () => navegar('grafico');
 document.getElementById('tabAdd').onclick = () => {
@@ -99,6 +102,7 @@ function navegar(view) {
     if (view === 'grafico') renderGrafico();
 }
 
+// Abre o modal de formulário (novo ou edição)
 function abrirForm(item = null) {
     if (item) {
         document.getElementById('tipo').value = item.tipo;
@@ -108,7 +112,7 @@ function abrirForm(item = null) {
         document.getElementById('categoria').value = item.categoria;
         document.getElementById('descricao').value = item.descricao;
         document.getElementById('valor').value = item.valor;
-        fotoBase64 = (item.foto && item.foto.startsWith('data:image')) ? item.foto : null;
+        fotoBase64 = item.foto || null;
     } else {
         document.getElementById('tipo').value = 'Receita';
         document.getElementById('data').value = new Date().toISOString().split('T')[0];
@@ -121,21 +125,24 @@ function abrirForm(item = null) {
     document.getElementById('overlay').classList.add('active');
 }
 
+// Fecha todos os modais
 function fecharTudo() {
     document.querySelectorAll('.modal, .overlay').forEach(el => el.classList.remove('active'));
     editId = null;
 }
 
+// Converte foto para Base64
 document.getElementById('inputFoto').addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = event => {
-        fotoBase64 = event.target.result; // Isso gera algo como "data:image/png;base64,...."
+        fotoBase64 = event.target.result;
     };
     reader.readAsDataURL(file);
 });
 
+// Salvar (criar ou atualizar)
 async function salvar() {
     if (!document.getElementById('data').value || !document.getElementById('valor').value) {
         alert('Preencha data e valor!');
@@ -149,7 +156,7 @@ async function salvar() {
         categoria: document.getElementById('categoria').value || 'Geral',
         descricao: document.getElementById('descricao').value || 'Sem título',
         valor: parseFloat(document.getElementById('valor').value),
-        foto: fotoBase64, // Pode ser null ou a string base64
+        foto: fotoBase64,
         sinc: 0
     };
 
@@ -163,6 +170,7 @@ async function salvar() {
     };
 }
 
+// Editar um lançamento existente
 function editar(id) {
     const item = lancamentos.find(l => l.id === id);
     if (item) {
@@ -172,6 +180,7 @@ function editar(id) {
     }
 }
 
+// Excluir lançamento
 async function excluir(id) {
     if (!confirm('Excluir lançamento?')) return;
     const tx = db.transaction(STORE, 'readwrite');
@@ -189,13 +198,27 @@ async function excluir(id) {
     };
 }
 
+// Variável para armazenar a URL da foto atual no modal
+let fotoAtualSrc = '';
+
+// Zoom na foto (abre modal)
 function verFoto(src) {
-    if (!src || !src.startsWith('data:image')) return;
+    if (!src) return;
+    fotoAtualSrc = src;
     document.getElementById('fotoGrande').src = src;
     document.getElementById('modalZoom').classList.add('active');
     document.getElementById('overlay').classList.add('active');
 }
 
+// Abre a foto em uma nova aba (tamanho real)
+function abrirFotoNovaAba() {
+    if (fotoAtualSrc) {
+        // Se for base64 muito longa, ainda pode funcionar, mas algumas abas podem limitar
+        window.open(fotoAtualSrc, '_blank');
+    }
+}
+
+// Gráfico de despesas por categoria
 function renderGrafico() {
     const filtrados = lancamentos.filter(i => i.data.startsWith(mesAtual) && i.tipo === 'Despesa');
     const caps = {};
@@ -209,6 +232,7 @@ function renderGrafico() {
     });
 }
 
+// Exportar CSV do mês atual (com data DD-MM-YYYY)
 function exportarCSV() {
     let csv = 'Data;Tipo;Descricao;Valor\n';
     lancamentos.filter(i => i.data.startsWith(mesAtual)).forEach(i => {
@@ -221,6 +245,7 @@ function exportarCSV() {
     a.click();
 }
 
+// Status Online/Offline
 function atualizarStatus() {
     const label = document.getElementById('statusLabel');
     if (navigator.onLine) {
@@ -235,38 +260,11 @@ window.addEventListener('online', atualizarStatus);
 window.addEventListener('offline', atualizarStatus);
 atualizarStatus();
 
+// Sincronização com a API do Google Sheets
 async function sincronizar() {
-    console.log('Iniciando sincronização...');
+    console.log('Sincronizando...');
     try {
-        // Baixa dados da API
-        const response = await fetch(API_URL + '?action=list');
-        if (!response.ok) throw new Error('Erro na listagem');
-        const result = await response.json();
-        if (result.data && Array.isArray(result.data)) {
-            const tx = db.transaction(STORE, 'readwrite');
-            const store = tx.objectStore(STORE);
-            for (const apiItem of result.data) {
-                // Verifica se fotoBase64 é uma string base64 válida
-                let foto = '';
-                if (apiItem.fotoBase64 && typeof apiItem.fotoBase64 === 'string' && apiItem.fotoBase64.startsWith('data:image')) {
-                    foto = apiItem.fotoBase64;
-                }
-                const localItem = {
-                    id: apiItem.id.toString(),
-                    tipo: apiItem.tipo,
-                    data: apiItem.data,
-                    categoria: apiItem.categoria,
-                    descricao: apiItem.descricao,
-                    valor: parseFloat(apiItem.valor),
-                    foto: foto,
-                    sinc: 1
-                };
-                await store.put(localItem);
-            }
-            await tx.complete;
-        }
-
-        // Envia itens locais não sincronizados
+        // Envia pendentes (sinc = 0)
         const unsynced = lancamentos.filter(l => l.sinc === 0);
         for (const item of unsynced) {
             const payload = {
@@ -278,30 +276,50 @@ async function sincronizar() {
                 valor: item.valor,
                 tipo: item.tipo,
                 temFoto: item.foto ? 'Sim' : 'Não',
-                fotoBase64: item.foto || '' // Agora envia o base64 real, não "Sim"
+                fotoBase64: item.foto || ''
             };
-            try {
-                await fetch(API_URL, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                // Marca como sincronizado
-                item.sinc = 1;
-                const tx = db.transaction(STORE, 'readwrite');
-                tx.objectStore(STORE).put(item);
-                await tx.complete;
-            } catch (err) {
-                console.warn('Erro ao enviar (ignorado):', err);
-            }
+            await fetch(API_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            item.sinc = 1;
+            const tx = db.transaction(STORE, 'readwrite');
+            tx.objectStore(STORE).put(item);
+            await tx.complete;
         }
-        carregarDados(); // Atualiza tela
+
+        // Baixa todos os registros da API
+        const response = await fetch(API_URL + '?action=list');
+        const result = await response.json();
+        if (result.data && Array.isArray(result.data)) {
+            const apiRecords = result.data;
+            const tx = db.transaction(STORE, 'readwrite');
+            const store = tx.objectStore(STORE);
+            for (const apiItem of apiRecords) {
+                const localItem = {
+                    id: apiItem.id.toString(),
+                    tipo: apiItem.tipo,
+                    data: apiItem.data,
+                    categoria: apiItem.categoria,
+                    descricao: apiItem.descricao,
+                    valor: parseFloat(apiItem.valor),
+                    foto: apiItem.fotoBase64 || '',
+                    sinc: 1
+                };
+                await store.put(localItem);
+            }
+            await tx.complete;
+            console.log('Sincronização concluída');
+            carregarDados();
+        }
     } catch (err) {
-        console.error('Erro na sincronização:', err);
+        console.warn('Erro na sincronização:', err);
     }
 }
 
+// Registra o Service Worker
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('service-worker.js');
 }
