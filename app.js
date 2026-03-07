@@ -261,7 +261,7 @@ async function sincronizar() {
         const unsynced = lancamentos.filter(l => l.sinc === 0);
         for (const item of unsynced) {
             const payload = {
-                action: 'create', // ou update, mas simplificado
+                action: 'create',
                 id: item.id,
                 data: item.data,
                 categoria: item.categoria,
@@ -274,7 +274,7 @@ async function sincronizar() {
             try {
                 await fetch(API_URL, {
                     method: 'POST',
-                    mode: 'no-cors', // evita CORS
+                    mode: 'no-cors',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
@@ -285,7 +285,7 @@ async function sincronizar() {
                 await tx.complete;
             } catch (err) {
                 console.warn('Erro ao enviar (ignorado):', err);
-                // Não marca como sincronizado para tentar depois
+                // Não marca para tentar depois
             }
         }
         carregarDados(); // atualiza tela
