@@ -9,16 +9,15 @@ let termoBusca = '';
 let fotoBase64 = null;
 let editId = null;
 
-// Utilitário para converter YYYY-MM-DD -> DD-MM-YYYY (somente para exibição)
+// Utilitário para formatar data
 function formatarDataBR(dataStr) {
     if (!dataStr) return '';
-    // Extrai apenas a parte da data se vier com horário
     let dataLimpa = dataStr.includes('T') ? dataStr.split('T')[0] : dataStr;
     if (/^\d{4}-\d{2}-\d{2}$/.test(dataLimpa)) {
         const [ano, mes, dia] = dataLimpa.split('-');
         return `${dia}-${mes}-${ano}`;
     }
-    return dataLimpa; // fallback
+    return dataLimpa;
 }
 
 // Inicializar IndexedDB
@@ -35,7 +34,6 @@ request.onsuccess = e => {
     carregarDados();
 };
 
-// Carrega dados do IndexedDB
 async function carregarDados() {
     const tx = db.transaction(STORE, 'readonly');
     const store = tx.objectStore(STORE);
@@ -46,7 +44,6 @@ async function carregarDados() {
     };
 }
 
-// Atualiza a lista na tela
 function atualizarTela() {
     const lista = document.getElementById('listaRecentes');
     const filtrados = lancamentos.filter(i => 
@@ -61,11 +58,12 @@ function atualizarTela() {
         const v = parseFloat(item.valor) || 0;
         item.tipo === 'Receita' ? rec += v : desp += v;
 
-        // Se tiver foto, exibe a miniatura; caso contrário, não exibe a imagem
-        const fotoSrc = item.foto ? item.foto : '';
+        const fotoSrc = item.foto && item.foto.startsWith('data:image') ? item.foto : '';
+        const imgTag = fotoSrc ? `<img class="mini-foto" src="${fotoSrc}" onclick="verFoto('${fotoSrc}')">` : `<div class="mini-foto" style="background:#eee; display:flex; align-items:center; justify-content:center; font-size:10px; color:#aaa">Sem foto</div>`;
+
         lista.innerHTML += `
             <div class="item">
-                <img class="mini-foto" src="${fotoSrc}" onclick="verFoto('${fotoSrc}')" onerror="this.style.display='none'">
+                ${imgTag}
                 <div class="info">
                     <strong>${item.descricao}</strong>
                     <small>${item.categoria} • ${formatarDataBR(item.data)}</small>
@@ -73,8 +71,8 @@ function atualizarTela() {
                 <div style="text-align:right">
                     <div class="${item.tipo === 'Receita' ? 'positivo' : 'negativo'}">R$ ${v.toFixed(2)}</div>
                     <div>
-                        <small class="edit-link" onclick="editar('${item.id}')">✏️ Editar</small>
-                        <small class="delete-link" onclick="excluir('${item.id}')">🗑️ Excluir</small>
+                        <small class="edit-link" onclick="editar('${item.id}')">✏️</small>
+                        <small class="delete-link" onclick="excluir('${item.id}')">🗑️</small>
                     </div>
                 </div>
             </div>`;
@@ -85,11 +83,9 @@ function atualizarTela() {
     document.getElementById('totalDes').innerText = `R$ ${desp.toFixed(2)}`;
 }
 
-// Filtros
+// Eventos de Filtro e Navegação
 document.getElementById('filtroMes').onchange = e => { mesAtual = e.target.value; atualizarTela(); };
 document.getElementById('campoBusca').oninput = e => { termoBusca = e.target.value.toLowerCase(); atualizarTela(); };
-
-// Navegação entre abas
 document.getElementById('tabResumo').onclick = () => navegar('resumo');
 document.getElementById('tabGrafico').onclick = () => navegar('grafico');
 document.getElementById('tabAdd').onclick = () => {
@@ -106,7 +102,6 @@ function navegar(view) {
     if (view === 'grafico') renderGrafico();
 }
 
-// Limpa o formulário para novo lançamento
 function limparForm() {
     document.getElementById('tipo').value = 'Receita';
     document.getElementById('data').value = new Date().toISOString().split('T')[0];
@@ -116,43 +111,50 @@ function limparForm() {
     fotoBase64 = null;
 }
 
-// Abre o modal de formulário (novo ou edição)
 function abrirForm(item = null) {
     if (item) {
-        // Edição: preenche os campos
         document.getElementById('tipo').value = item.tipo;
-        // Para o input date, precisamos do valor ISO (YYYY-MM-DD)
-        let dataIso = item.data;
-        if (dataIso.includes('T')) dataIso = dataIso.split('T')[0];
-        document.getElementById('data').value = dataIso;
+        document.getElementById('data').value = item.data.split('T')[0];
         document.getElementById('categoria').value = item.categoria;
         document.getElementById('descricao').value = item.descricao;
         document.getElementById('valor').value = item.valor;
-        // Restaura a foto para edição
         fotoBase64 = item.foto || null;
     }
     document.getElementById('modalForm').classList.add('active');
     document.getElementById('overlay').classList.add('active');
 }
 
-// Fecha todos os modais
 function fecharTudo() {
     document.querySelectorAll('.modal, .overlay').forEach(el => el.classList.remove('active'));
     editId = null;
 }
 
-// Converte foto para Base64
+// COMPRESSÃO DE IMAGEM: Redimensiona para não estourar o limite do Google Sheets
 document.getElementById('inputFoto').addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (!file) return;
+
     const reader = new FileReader();
     reader.onload = event => {
-        fotoBase64 = event.target.result;
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            const max = 400; // Tamanho máximo da miniatura
+            if (width > height) { if (width > max) { height *= max / width; width = max; } }
+            else { if (height > max) { width *= max / height; height = max; } }
+            canvas.width = width;
+            canvas.height = height;
+            canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+            fotoBase64 = canvas.toDataURL('image/jpeg', 0.7); // 70% de qualidade
+            alert('Foto carregada com sucesso!');
+        };
+        img.src = event.target.result;
     };
     reader.readAsDataURL(file);
 });
 
-// Salvar (criar ou atualizar)
 async function salvar() {
     if (!document.getElementById('data').value || !document.getElementById('valor').value) {
         alert('Preencha data e valor!');
@@ -162,53 +164,39 @@ async function salvar() {
     const item = {
         id: editId || 'ID' + Date.now(),
         tipo: document.getElementById('tipo').value,
-        data: document.getElementById('data').value, // já YYYY-MM-DD
+        data: document.getElementById('data').value,
         categoria: document.getElementById('categoria').value || 'Geral',
         descricao: document.getElementById('descricao').value || 'Sem título',
         valor: parseFloat(document.getElementById('valor').value),
         foto: fotoBase64,
-        sinc: 0 // pendente de sincronização
+        sinc: 0
     };
 
     const tx = db.transaction(STORE, 'readwrite');
-    const store = tx.objectStore(STORE);
-    store.put(item);
+    tx.objectStore(STORE).put(item);
     tx.oncomplete = () => {
         fecharTudo();
         carregarDados();
-        if (navigator.onLine) sincronizar();
     };
 }
 
-// Editar um lançamento existente
 function editar(id) {
     const item = lancamentos.find(l => l.id === id);
-    if (item) {
-        editId = id;
-        document.getElementById('formTitle').innerText = 'Editar Lançamento';
-        abrirForm(item);
-    }
+    if (item) { editId = id; document.getElementById('formTitle').innerText = 'Editar'; abrirForm(item); }
 }
 
-// Excluir lançamento
 async function excluir(id) {
-    if (!confirm('Excluir lançamento?')) return;
+    if (!confirm('Excluir?')) return;
     const tx = db.transaction(STORE, 'readwrite');
     tx.objectStore(STORE).delete(id);
     tx.oncomplete = () => {
         carregarDados();
         if (navigator.onLine) {
-            fetch(API_URL, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'delete', id: id })
-            }).catch(console.warn);
+            fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'delete', id: id }) });
         }
     };
 }
 
-// Zoom na foto
 function verFoto(src) {
     if (!src) return;
     document.getElementById('fotoGrande').src = src;
@@ -216,21 +204,15 @@ function verFoto(src) {
     document.getElementById('overlay').classList.add('active');
 }
 
-// Gráfico de despesas por categoria
 function renderGrafico() {
     const filtrados = lancamentos.filter(i => i.data.startsWith(mesAtual) && i.tipo === 'Despesa');
     const caps = {};
     filtrados.forEach(i => caps[i.categoria] = (caps[i.categoria] || 0) + parseFloat(i.valor));
-    
     const ctx = document.getElementById('meuGrafico').getContext('2d');
     if (chartInstance) chartInstance.destroy();
-    chartInstance = new Chart(ctx, {
-        type: 'pie',
-        data: { labels: Object.keys(caps), datasets: [{ data: Object.values(caps) }] }
-    });
+    chartInstance = new Chart(ctx, { type: 'pie', data: { labels: Object.keys(caps), datasets: [{ data: Object.values(caps) }] } });
 }
 
-// Exportar CSV do mês atual (com data no formato DD-MM-YYYY)
 function exportarCSV() {
     let csv = 'Data;Tipo;Descricao;Valor\n';
     lancamentos.filter(i => i.data.startsWith(mesAtual)).forEach(i => {
@@ -243,26 +225,8 @@ function exportarCSV() {
     a.click();
 }
 
-// Status Online/Offline
-function atualizarStatus() {
-    const label = document.getElementById('statusLabel');
-    if (navigator.onLine) {
-        label.innerText = 'Online';
-        label.className = 'status online';
-    } else {
-        label.innerText = 'Offline';
-        label.className = 'status offline';
-    }
-}
-window.addEventListener('online', atualizarStatus);
-window.addEventListener('offline', atualizarStatus);
-atualizarStatus();
-
-// Sincronização com a API do Google Sheets
 async function sincronizar() {
-    console.log('Sincronizando...');
     try {
-        // Envia pendentes (sinc = 0)
         const unsynced = lancamentos.filter(l => l.sinc === 0);
         for (const item of unsynced) {
             const payload = {
@@ -276,28 +240,19 @@ async function sincronizar() {
                 temFoto: item.foto ? 'Sim' : 'Não',
                 fotoBase64: item.foto || ''
             };
-            await fetch(API_URL, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            // Marca como sincronizado
+            await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
             item.sinc = 1;
             const tx = db.transaction(STORE, 'readwrite');
             tx.objectStore(STORE).put(item);
-            await tx.complete;
         }
 
-        // Baixa todos os registros da API
         const response = await fetch(API_URL + '?action=list');
         const result = await response.json();
-        if (result.data && Array.isArray(result.data)) {
-            const apiRecords = result.data;
+        if (result.data) {
             const tx = db.transaction(STORE, 'readwrite');
             const store = tx.objectStore(STORE);
-            for (const apiItem of apiRecords) {
-                const localItem = {
+            result.data.forEach(apiItem => {
+                store.put({
                     id: apiItem.id.toString(),
                     tipo: apiItem.tipo,
                     data: apiItem.data,
@@ -306,19 +261,19 @@ async function sincronizar() {
                     valor: parseFloat(apiItem.valor),
                     foto: apiItem.fotoBase64 || '',
                     sinc: 1
-                };
-                await store.put(localItem);
-            }
-            await tx.complete;
-            console.log('Sincronização concluída');
-            carregarDados();
+                });
+            });
         }
-    } catch (err) {
-        console.warn('Erro na sincronização:', err);
-    }
+    } catch (err) { console.warn('Erro sincronia:', err); }
 }
 
-// Registra o Service Worker
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('service-worker.js');
+function atualizarStatus() {
+    const label = document.getElementById('statusLabel');
+    label.innerText = navigator.onLine ? 'Online' : 'Offline';
+    label.className = 'status ' + (navigator.onLine ? 'online' : 'offline');
 }
+window.addEventListener('online', atualizarStatus);
+window.addEventListener('offline', atualizarStatus);
+atualizarStatus();
+
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('service-worker.js'); }
