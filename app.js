@@ -56,7 +56,7 @@ function atualizarTela() {
         const v = parseFloat(item.valor) || 0;
         item.tipo === 'Receita' ? rec += v : desp += v;
 
-        // Verifica se a foto é uma string Base64 válida (começa com data:image)
+        // Verifica se a foto é uma string base64 válida (começa com data:image)
         const fotoSrc = (item.foto && item.foto.startsWith('data:image')) ? item.foto : '';
 
         lista.innerHTML += `
@@ -81,6 +81,7 @@ function atualizarTela() {
     document.getElementById('totalDes').innerText = `R$ ${desp.toFixed(2)}`;
 }
 
+// Eventos
 document.getElementById('filtroMes').onchange = e => { mesAtual = e.target.value; atualizarTela(); };
 document.getElementById('campoBusca').oninput = e => { termoBusca = e.target.value.toLowerCase(); atualizarTela(); };
 document.getElementById('tabResumo').onclick = () => navegar('resumo');
@@ -107,7 +108,7 @@ function abrirForm(item = null) {
         document.getElementById('categoria').value = item.categoria;
         document.getElementById('descricao').value = item.descricao;
         document.getElementById('valor').value = item.valor;
-        fotoBase64 = item.foto || null;
+        fotoBase64 = (item.foto && item.foto.startsWith('data:image')) ? item.foto : null;
     } else {
         document.getElementById('tipo').value = 'Receita';
         document.getElementById('data').value = new Date().toISOString().split('T')[0];
@@ -130,8 +131,7 @@ document.getElementById('inputFoto').addEventListener('change', function(e) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = event => {
-        fotoBase64 = event.target.result;
-        console.log('Foto convertida para Base64 (primeiros 50 caracteres):', fotoBase64.substring(0, 50));
+        fotoBase64 = event.target.result; // Isso gera algo como "data:image/png;base64,...."
     };
     reader.readAsDataURL(file);
 });
@@ -149,10 +149,9 @@ async function salvar() {
         categoria: document.getElementById('categoria').value || 'Geral',
         descricao: document.getElementById('descricao').value || 'Sem título',
         valor: parseFloat(document.getElementById('valor').value),
-        foto: fotoBase64, // Agora é o Base64 completo ou null
+        foto: fotoBase64, // Pode ser null ou a string base64
         sinc: 0
     };
-    console.log('Salvando item:', item);
 
     const tx = db.transaction(STORE, 'readwrite');
     const store = tx.objectStore(STORE);
@@ -191,10 +190,7 @@ async function excluir(id) {
 }
 
 function verFoto(src) {
-    if (!src || !src.startsWith('data:image')) {
-        alert('Foto não disponível ou formato inválido.');
-        return;
-    }
+    if (!src || !src.startsWith('data:image')) return;
     document.getElementById('fotoGrande').src = src;
     document.getElementById('modalZoom').classList.add('active');
     document.getElementById('overlay').classList.add('active');
@@ -242,7 +238,7 @@ atualizarStatus();
 async function sincronizar() {
     console.log('Iniciando sincronização...');
     try {
-        // Baixa dados da API (GET não tem problema de CORS)
+        // Baixa dados da API
         const response = await fetch(API_URL + '?action=list');
         if (!response.ok) throw new Error('Erro na listagem');
         const result = await response.json();
@@ -250,11 +246,10 @@ async function sincronizar() {
             const tx = db.transaction(STORE, 'readwrite');
             const store = tx.objectStore(STORE);
             for (const apiItem of result.data) {
-                // Verifica se o campo fotoBase64 é uma string Base64 válida ou apenas "Sim"
-                let foto = apiItem.fotoBase64 || '';
-                if (foto && foto !== 'Sim' && !foto.startsWith('data:image')) {
-                    // Se não for Base64, ignora (pode ser um placeholder)
-                    foto = '';
+                // Verifica se fotoBase64 é uma string base64 válida
+                let foto = '';
+                if (apiItem.fotoBase64 && typeof apiItem.fotoBase64 === 'string' && apiItem.fotoBase64.startsWith('data:image')) {
+                    foto = apiItem.fotoBase64;
                 }
                 const localItem = {
                     id: apiItem.id.toString(),
@@ -271,7 +266,7 @@ async function sincronizar() {
             await tx.complete;
         }
 
-        // Envia itens locais não sincronizados (com mode: 'no-cors')
+        // Envia itens locais não sincronizados
         const unsynced = lancamentos.filter(l => l.sinc === 0);
         for (const item of unsynced) {
             const payload = {
@@ -283,7 +278,7 @@ async function sincronizar() {
                 valor: item.valor,
                 tipo: item.tipo,
                 temFoto: item.foto ? 'Sim' : 'Não',
-                fotoBase64: item.foto || ''
+                fotoBase64: item.foto || '' // Agora envia o base64 real, não "Sim"
             };
             try {
                 await fetch(API_URL, {
@@ -292,17 +287,16 @@ async function sincronizar() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-                // Assume que deu certo e marca como sincronizado
+                // Marca como sincronizado
                 item.sinc = 1;
                 const tx = db.transaction(STORE, 'readwrite');
                 tx.objectStore(STORE).put(item);
                 await tx.complete;
-                console.log('Item enviado:', item.id);
             } catch (err) {
                 console.warn('Erro ao enviar (ignorado):', err);
             }
         }
-        carregarDados(); // atualiza tela
+        carregarDados(); // Atualiza tela
     } catch (err) {
         console.error('Erro na sincronização:', err);
     }
