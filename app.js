@@ -56,9 +56,12 @@ function atualizarTela() {
         const v = parseFloat(item.valor) || 0;
         item.tipo === 'Receita' ? rec += v : desp += v;
 
+        // Verifica se a foto é uma string Base64 válida (começa com data:image)
+        const fotoSrc = (item.foto && item.foto.startsWith('data:image')) ? item.foto : '';
+
         lista.innerHTML += `
             <div class="item">
-                <img class="mini-foto" src="${item.foto || ''}" onclick="verFoto('${item.foto}')">
+                <img class="mini-foto" src="${fotoSrc}" onclick="verFoto('${fotoSrc}')">
                 <div class="info">
                     <strong>${item.descricao}</strong>
                     <small>${item.categoria} • ${formatarDataBR(item.data)}</small>
@@ -128,6 +131,7 @@ document.getElementById('inputFoto').addEventListener('change', function(e) {
     const reader = new FileReader();
     reader.onload = event => {
         fotoBase64 = event.target.result;
+        console.log('Foto convertida para Base64 (primeiros 50 caracteres):', fotoBase64.substring(0, 50));
     };
     reader.readAsDataURL(file);
 });
@@ -145,9 +149,10 @@ async function salvar() {
         categoria: document.getElementById('categoria').value || 'Geral',
         descricao: document.getElementById('descricao').value || 'Sem título',
         valor: parseFloat(document.getElementById('valor').value),
-        foto: fotoBase64,
+        foto: fotoBase64, // Agora é o Base64 completo ou null
         sinc: 0
     };
+    console.log('Salvando item:', item);
 
     const tx = db.transaction(STORE, 'readwrite');
     const store = tx.objectStore(STORE);
@@ -186,7 +191,10 @@ async function excluir(id) {
 }
 
 function verFoto(src) {
-    if (!src) return;
+    if (!src || !src.startsWith('data:image')) {
+        alert('Foto não disponível ou formato inválido.');
+        return;
+    }
     document.getElementById('fotoGrande').src = src;
     document.getElementById('modalZoom').classList.add('active');
     document.getElementById('overlay').classList.add('active');
@@ -242,6 +250,12 @@ async function sincronizar() {
             const tx = db.transaction(STORE, 'readwrite');
             const store = tx.objectStore(STORE);
             for (const apiItem of result.data) {
+                // Verifica se o campo fotoBase64 é uma string Base64 válida ou apenas "Sim"
+                let foto = apiItem.fotoBase64 || '';
+                if (foto && foto !== 'Sim' && !foto.startsWith('data:image')) {
+                    // Se não for Base64, ignora (pode ser um placeholder)
+                    foto = '';
+                }
                 const localItem = {
                     id: apiItem.id.toString(),
                     tipo: apiItem.tipo,
@@ -249,7 +263,7 @@ async function sincronizar() {
                     categoria: apiItem.categoria,
                     descricao: apiItem.descricao,
                     valor: parseFloat(apiItem.valor),
-                    foto: apiItem.fotoBase64 || '',
+                    foto: foto,
                     sinc: 1
                 };
                 await store.put(localItem);
@@ -283,9 +297,9 @@ async function sincronizar() {
                 const tx = db.transaction(STORE, 'readwrite');
                 tx.objectStore(STORE).put(item);
                 await tx.complete;
+                console.log('Item enviado:', item.id);
             } catch (err) {
                 console.warn('Erro ao enviar (ignorado):', err);
-                // Não marca para tentar depois
             }
         }
         carregarDados(); // atualiza tela
