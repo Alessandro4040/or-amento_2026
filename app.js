@@ -12,12 +12,13 @@ let editId = null;
 // Utilitário para converter YYYY-MM-DD -> DD-MM-YYYY (somente para exibição)
 function formatarDataBR(dataStr) {
     if (!dataStr) return '';
+    // Extrai apenas a parte da data se vier com horário
     let dataLimpa = dataStr.includes('T') ? dataStr.split('T')[0] : dataStr;
     if (/^\d{4}-\d{2}-\d{2}$/.test(dataLimpa)) {
         const [ano, mes, dia] = dataLimpa.split('-');
         return `${dia}-${mes}-${ano}`;
     }
-    return dataLimpa;
+    return dataLimpa; // fallback
 }
 
 // Inicializar IndexedDB
@@ -60,9 +61,11 @@ function atualizarTela() {
         const v = parseFloat(item.valor) || 0;
         item.tipo === 'Receita' ? rec += v : desp += v;
 
+        // Se tiver foto, exibe a miniatura; caso contrário, não exibe a imagem
+        const fotoSrc = item.foto ? item.foto : '';
         lista.innerHTML += `
             <div class="item">
-                <img class="mini-foto" src="${item.foto || ''}" onclick="verFoto('${item.foto}')">
+                <img class="mini-foto" src="${fotoSrc}" onclick="verFoto('${fotoSrc}')" onerror="this.style.display='none'">
                 <div class="info">
                     <strong>${item.descricao}</strong>
                     <small>${item.categoria} • ${formatarDataBR(item.data)}</small>
@@ -92,6 +95,7 @@ document.getElementById('tabGrafico').onclick = () => navegar('grafico');
 document.getElementById('tabAdd').onclick = () => {
     editId = null;
     document.getElementById('formTitle').innerText = 'Novo Lançamento';
+    limparForm();
     abrirForm();
 };
 document.getElementById('btnSalvar').onclick = salvar;
@@ -102,24 +106,30 @@ function navegar(view) {
     if (view === 'grafico') renderGrafico();
 }
 
+// Limpa o formulário para novo lançamento
+function limparForm() {
+    document.getElementById('tipo').value = 'Receita';
+    document.getElementById('data').value = new Date().toISOString().split('T')[0];
+    document.getElementById('categoria').value = '';
+    document.getElementById('descricao').value = '';
+    document.getElementById('valor').value = '';
+    fotoBase64 = null;
+}
+
 // Abre o modal de formulário (novo ou edição)
 function abrirForm(item = null) {
     if (item) {
+        // Edição: preenche os campos
         document.getElementById('tipo').value = item.tipo;
+        // Para o input date, precisamos do valor ISO (YYYY-MM-DD)
         let dataIso = item.data;
         if (dataIso.includes('T')) dataIso = dataIso.split('T')[0];
         document.getElementById('data').value = dataIso;
         document.getElementById('categoria').value = item.categoria;
         document.getElementById('descricao').value = item.descricao;
         document.getElementById('valor').value = item.valor;
+        // Restaura a foto para edição
         fotoBase64 = item.foto || null;
-    } else {
-        document.getElementById('tipo').value = 'Receita';
-        document.getElementById('data').value = new Date().toISOString().split('T')[0];
-        document.getElementById('categoria').value = '';
-        document.getElementById('descricao').value = '';
-        document.getElementById('valor').value = '';
-        fotoBase64 = null;
     }
     document.getElementById('modalForm').classList.add('active');
     document.getElementById('overlay').classList.add('active');
@@ -152,12 +162,12 @@ async function salvar() {
     const item = {
         id: editId || 'ID' + Date.now(),
         tipo: document.getElementById('tipo').value,
-        data: document.getElementById('data').value,
+        data: document.getElementById('data').value, // já YYYY-MM-DD
         categoria: document.getElementById('categoria').value || 'Geral',
         descricao: document.getElementById('descricao').value || 'Sem título',
         valor: parseFloat(document.getElementById('valor').value),
         foto: fotoBase64,
-        sinc: 0
+        sinc: 0 // pendente de sincronização
     };
 
     const tx = db.transaction(STORE, 'readwrite');
@@ -198,24 +208,12 @@ async function excluir(id) {
     };
 }
 
-// Variável para armazenar a URL da foto atual no modal
-let fotoAtualSrc = '';
-
-// Zoom na foto (abre modal)
+// Zoom na foto
 function verFoto(src) {
     if (!src) return;
-    fotoAtualSrc = src;
     document.getElementById('fotoGrande').src = src;
     document.getElementById('modalZoom').classList.add('active');
     document.getElementById('overlay').classList.add('active');
-}
-
-// Abre a foto em uma nova aba (tamanho real)
-function abrirFotoNovaAba() {
-    if (fotoAtualSrc) {
-        // Se for base64 muito longa, ainda pode funcionar, mas algumas abas podem limitar
-        window.open(fotoAtualSrc, '_blank');
-    }
 }
 
 // Gráfico de despesas por categoria
@@ -232,7 +230,7 @@ function renderGrafico() {
     });
 }
 
-// Exportar CSV do mês atual (com data DD-MM-YYYY)
+// Exportar CSV do mês atual (com data no formato DD-MM-YYYY)
 function exportarCSV() {
     let csv = 'Data;Tipo;Descricao;Valor\n';
     lancamentos.filter(i => i.data.startsWith(mesAtual)).forEach(i => {
@@ -284,6 +282,7 @@ async function sincronizar() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+            // Marca como sincronizado
             item.sinc = 1;
             const tx = db.transaction(STORE, 'readwrite');
             tx.objectStore(STORE).put(item);
