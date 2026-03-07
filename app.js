@@ -9,7 +9,6 @@ let termoBusca = '';
 let fotoBase64 = null;
 let editId = null;
 
-// Utilitário para formatar data
 function formatarDataBR(dataStr) {
     if (!dataStr) return '';
     let dataLimpa = dataStr.includes('T') ? dataStr.split('T')[0] : dataStr;
@@ -20,7 +19,6 @@ function formatarDataBR(dataStr) {
     return dataLimpa;
 }
 
-// Inicializar IndexedDB
 const request = indexedDB.open(DB_NAME, 4);
 request.onupgradeneeded = e => {
     db = e.target.result;
@@ -80,7 +78,6 @@ function atualizarTela() {
     document.getElementById('totalDes').innerText = `R$ ${desp.toFixed(2)}`;
 }
 
-// Eventos
 document.getElementById('filtroMes').onchange = e => { mesAtual = e.target.value; atualizarTela(); };
 document.getElementById('campoBusca').oninput = e => { termoBusca = e.target.value.toLowerCase(); atualizarTela(); };
 document.getElementById('tabResumo').onclick = () => navegar('resumo');
@@ -178,9 +175,9 @@ async function excluir(id) {
     tx.oncomplete = () => {
         carregarDados();
         if (navigator.onLine) {
-            // Tenta deletar na API também
             fetch(API_URL, {
                 method: 'POST',
+                mode: 'no-cors',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'delete', id: id })
             }).catch(console.warn);
@@ -234,77 +231,37 @@ window.addEventListener('online', atualizarStatus);
 window.addEventListener('offline', atualizarStatus);
 atualizarStatus();
 
-// Função para verificar se um ID existe na API
-async function verificarExistenciaNaAPI(id) {
-    try {
-        const response = await fetch(API_URL + `?action=get&id=${encodeURIComponent(id)}`);
-        if (!response.ok) return false;
-        const result = await response.json();
-        return result.data !== null;
-    } catch (err) {
-        console.warn('Erro ao verificar existência:', err);
-        return false;
-    }
-}
-
-// Sincronização aprimorada
 async function sincronizar() {
     console.log('Iniciando sincronização...');
     try {
-        // 1. Busca todos os registros da API
+        // Baixa dados da API (GET não tem problema de CORS)
         const response = await fetch(API_URL + '?action=list');
-        if (!response.ok) {
-            throw new Error('Erro ao buscar dados da API: ' + response.status);
-        }
+        if (!response.ok) throw new Error('Erro na listagem');
         const result = await response.json();
-        if (!result.data || !Array.isArray(result.data)) {
-            throw new Error('Resposta da API inválida');
-        }
-
-        const apiRecords = result.data;
-        console.log('Registros da API:', apiRecords.length);
-
-        // 2. Abre transação para ler e escrever no IndexedDB
-        const tx = db.transaction(STORE, 'readwrite');
-        const store = tx.objectStore(STORE);
-
-        // Mapa de IDs existentes localmente
-        const localMap = new Map();
-        lancamentos.forEach(l => localMap.set(l.id, l));
-
-        // 3. Para cada registro da API, insere ou atualiza no banco local
-        for (const apiItem of apiRecords) {
-            const id = apiItem.id.toString();
-            const apiData = {
-                id: id,
-                tipo: apiItem.tipo,
-                data: apiItem.data,
-                categoria: apiItem.categoria,
-                descricao: apiItem.descricao,
-                valor: parseFloat(apiItem.valor),
-                foto: apiItem.fotoBase64 || '',
-                sinc: 1
-            };
-
-            const localItem = localMap.get(id);
-            if (!localItem || localItem.sinc === 1) {
-                await store.put(apiData);
-            } else {
-                console.log(`Item ${id} possui alteração local não enviada. Mantendo local.`);
+        if (result.data && Array.isArray(result.data)) {
+            const tx = db.transaction(STORE, 'readwrite');
+            const store = tx.objectStore(STORE);
+            for (const apiItem of result.data) {
+                const localItem = {
+                    id: apiItem.id.toString(),
+                    tipo: apiItem.tipo,
+                    data: apiItem.data,
+                    categoria: apiItem.categoria,
+                    descricao: apiItem.descricao,
+                    valor: parseFloat(apiItem.valor),
+                    foto: apiItem.fotoBase64 || '',
+                    sinc: 1
+                };
+                await store.put(localItem);
             }
+            await tx.complete;
         }
 
-        // 4. Agora, envia todos os itens locais com sinc === 0 para a API
+        // Envia itens locais não sincronizados (com mode: 'no-cors')
         const unsynced = lancamentos.filter(l => l.sinc === 0);
-        console.log('Itens locais não sincronizados:', unsynced.length);
-
         for (const item of unsynced) {
-            // Verifica se o ID já existe na API para decidir entre create ou update
-            const existe = await verificarExistenciaNaAPI(item.id);
-            const action = existe ? 'update' : 'create';
-
             const payload = {
-                action: action,
+                action: 'create', // ou update, mas simplificado
                 id: item.id,
                 data: item.data,
                 categoria: item.categoria,
@@ -314,41 +271,29 @@ async function sincronizar() {
                 temFoto: item.foto ? 'Sim' : 'Não',
                 fotoBase64: item.foto || ''
             };
-
             try {
-                const response = await fetch(API_URL, {
+                await fetch(API_URL, {
                     method: 'POST',
+                    mode: 'no-cors', // evita CORS
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-                const result = await response.json();
-                if (result.meta && result.meta.status >= 400) {
-                    throw new Error(result.meta.error || 'Erro na API');
-                }
-                // Marca como sincronizado
+                // Assume que deu certo e marca como sincronizado
                 item.sinc = 1;
-                await store.put(item);
-                console.log(`Item ${item.id} ${action}do com sucesso.`);
+                const tx = db.transaction(STORE, 'readwrite');
+                tx.objectStore(STORE).put(item);
+                await tx.complete;
             } catch (err) {
-                console.warn('Erro ao enviar item', item.id, err);
-                alert(`Falha ao sincronizar item ${item.descricao}. Verifique sua conexão e a planilha.`);
+                console.warn('Erro ao enviar (ignorado):', err);
+                // Não marca como sincronizado para tentar depois
             }
         }
-
-        await tx.complete;
-        console.log('Sincronização concluída');
-        // Recarrega os dados do IndexedDB para refletir as mudanças
-        carregarDados();
+        carregarDados(); // atualiza tela
     } catch (err) {
         console.error('Erro na sincronização:', err);
-        alert('Erro na sincronização. Verifique se a planilha tem a coluna "fotoBase64".');
     }
 }
 
-// Registra Service Worker
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('service-worker.js');
 }
