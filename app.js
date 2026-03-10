@@ -1,33 +1,95 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbzDQKaKjDgQh0UKCwWeE1AZC9vm3ZnEduFSYkt7VQsqlfaL9z02cno29IZRDOCZOxU6/exec'; 
-const DB_NAME = 'financas_db';
+const DB_NAME = 'financas_v21'; // Subi para 21 para garantir limpeza total
 const STORE = 'lançamentos';
 
-let db, chartInstance, lancamentos = [], fotoBase64 = null, editId = null;
+let db, lancamentos = [], chartInstance = null, fotoBase64 = null, editId = null;
 let mesAtual = new Date().toISOString().substring(0, 7);
 
-// Versão 20 para forçar limpeza de erros anteriores
-const request = indexedDB.open(DB_NAME, 20);
-
+const request = indexedDB.open(DB_NAME, 21);
 request.onupgradeneeded = e => {
-    db = e.target.result;
-    if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: 'id' });
-    }
+    e.target.result.createObjectStore(STORE, { keyPath: 'id' });
 };
 
 request.onsuccess = e => {
     db = e.target.result;
     document.getElementById('filtroMes').value = mesAtual;
     carregarDados();
+    // Forçar sincronia ao abrir
+    if (navigator.onLine) sincronizar();
 };
 
+// --- O SEGREDO DA SINCRONIA ENTRE ABAS ---
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        console.log("App focado, sincronizando...");
+        sincronizar();
+    }
+});
+
+async function sincronizar() {
+    if (!navigator.onLine) return;
+    document.getElementById('statusLabel').innerText = "Sincronizando...";
+    document.getElementById('statusLabel').className = "status syncing";
+
+    try {
+        // 1. Enviar o que foi feito offline
+        const localData = await getAllLocal();
+        const pendentes = localData.filter(l => l.sinc === 0);
+        
+        for (const item of pendentes) {
+            await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(item) });
+            item.sinc = 1;
+            await salvarLocal(item);
+        }
+
+        // 2. Puxar TUDO da planilha para garantir que todas as abas fiquem iguais
+        const res = await fetch(API_URL);
+        const result = await res.json();
+        
+        if (result.data) {
+            const tx = db.transaction(STORE, 'readwrite');
+            const store = tx.objectStore(STORE);
+            // Limpa o banco local e coloca o da planilha (o "verdadeiro")
+            store.clear(); 
+            result.data.forEach(item => {
+                store.put({
+                    ...item,
+                    id: item.id.toString(),
+                    valor: parseFloat(item.valor),
+                    sinc: 1,
+                    foto: item.foto || ''
+                });
+            });
+            tx.oncomplete = () => {
+                document.getElementById('statusLabel').innerText = "Sincronizado";
+                document.getElementById('statusLabel').className = "status online";
+                carregarDados();
+            };
+        }
+    } catch (e) {
+        console.error("Erro sync:", e);
+        document.getElementById('statusLabel').innerText = "Offline";
+    }
+}
+
 async function carregarDados() {
-    const tx = db.transaction(STORE, 'readonly');
-    tx.objectStore(STORE).getAll().onsuccess = e => {
-        lancamentos = e.target.result;
-        atualizarTela();
-        if (navigator.onLine) sincronizar();
-    };
+    lancamentos = await getAllLocal();
+    atualizarTela();
+}
+
+function getAllLocal() {
+    return new Promise(resolve => {
+        const tx = db.transaction(STORE, 'readonly');
+        tx.objectStore(STORE).getAll().onsuccess = e => resolve(e.target.result);
+    });
+}
+
+function salvarLocal(item) {
+    return new Promise(resolve => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).put(item);
+        tx.oncomplete = () => resolve();
+    });
 }
 
 function atualizarTela() {
@@ -45,85 +107,41 @@ function atualizarTela() {
     filtrados.sort((a,b) => b.data.localeCompare(a.data)).forEach(item => {
         const v = parseFloat(item.valor) || 0;
         item.tipo === 'Receita' ? rec += v : desp += v;
-        const imgHtml = item.foto ? `<img class="mini-foto" src="${item.foto}" onclick="verFoto('${item.foto}')">` : `<div class="mini-foto"></div>`;
         
         lista.innerHTML += `
             <div class="item">
-                ${imgHtml}
-                <div class="info" onclick="prepararEdicao('${item.id}')" style="cursor:pointer">
-                    <strong>${item.descricao}</strong>
+                ${item.foto ? `<img class="mini-foto" src="${item.foto}" onclick="verFoto('${item.foto}')">` : '<div class="mini-foto" style="display:flex;align-items:center;justify-content:center;font-size:20px">💰</div>'}
+                <div class="info" onclick="prepararEdicao('${item.id}')">
+                    <strong>${item.descricao}</strong><br>
                     <small>${item.categoria} • ${item.data.split('-').reverse().join('/')}</small>
                 </div>
                 <div style="text-align:right">
-                    <div class="${item.tipo === 'Receita' ? 'positivo' : 'negativo'}">R$ ${v.toFixed(2)}</div>
-                    <small onclick="excluir('${item.id}')" style="color:red;cursor:pointer">Excluir</small>
+                    <div style="font-weight:bold; color:${item.tipo === 'Receita' ? 'var(--success)' : 'var(--danger)'}">
+                        ${item.tipo === 'Receita' ? '+' : '-'} R$ ${v.toFixed(2)}
+                    </div>
                 </div>
             </div>`;
     });
+
     document.getElementById('saldoTotal').innerText = `R$ ${(rec - desp).toFixed(2)}`;
     document.getElementById('totalRec').innerText = `R$ ${rec.toFixed(2)}`;
     document.getElementById('totalDes').innerText = `R$ ${desp.toFixed(2)}`;
 }
 
-async function sincronizar() {
-    if (!navigator.onLine) return;
-    try {
-        // 1. Enviar dados locais pendentes
-        const unsynced = lancamentos.filter(l => l.sinc === 0);
-        for (const item of unsynced) {
-            await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(item) });
-            const tx = db.transaction(STORE, 'readwrite');
-            item.sinc = 1;
-            tx.objectStore(STORE).put(item);
-        }
-
-        // 2. Puxar dados da planilha
-        const res = await fetch(API_URL);
-        const result = await res.json();
-        if (result.data) {
-            const tx = db.transaction(STORE, 'readwrite');
-            const store = tx.objectStore(STORE);
-            result.data.forEach(item => {
-                store.put({ ...item, id: item.id.toString(), valor: parseFloat(item.valor), sinc: 1, foto: item.fotoBase64 || item.foto });
-            });
-            tx.oncomplete = () => carregarDados();
-        }
-    } catch (e) { console.error("Erro na sincronia:", e); }
-}
-
-// Funções de Interface (Abrir Form, Salvar, Excluir, etc) permanecem iguais...
+// Funções de UI
 function abrirForm() {
     editId = null;
-    document.getElementById('formTitle').innerText = "Novo Lançamento";
-    document.getElementById('tipo').value = "Despesa";
-    document.getElementById('data').value = new Date().toISOString().split('T')[0];
-    document.getElementById('categoria').value = "";
-    document.getElementById('descricao').value = "";
-    document.getElementById('valor').value = "";
     fotoBase64 = null;
     document.getElementById('imgPreview').style.display = 'none';
     document.getElementById('modalForm').classList.add('active');
     document.getElementById('overlay').classList.add('active');
+    document.getElementById('data').value = new Date().toISOString().split('T')[0];
 }
 
-function prepararEdicao(id) {
-    const item = lancamentos.find(i => i.id === id);
-    if (!item) return;
-    editId = id;
-    document.getElementById('formTitle').innerText = "Editar Lançamento";
-    document.getElementById('tipo').value = item.tipo;
-    document.getElementById('data').value = item.data;
-    document.getElementById('categoria').value = item.categoria;
-    document.getElementById('descricao').value = item.descricao;
-    document.getElementById('valor').value = item.valor;
-    fotoBase64 = item.foto;
-    const prev = document.getElementById('imgPreview');
-    if (fotoBase64) { prev.src = fotoBase64; prev.style.display = 'block'; }
-    document.getElementById('modalForm').classList.add('active');
-    document.getElementById('overlay').classList.add('active');
+function fecharTudo() {
+    document.getElementById('modalForm').classList.remove('active');
+    document.getElementById('overlay').classList.remove('active');
 }
-
-function fecharTudo() { document.querySelectorAll('.modal, .overlay').forEach(el => el.classList.remove('active')); }
 
 async function salvar() {
     const item = {
@@ -136,46 +154,21 @@ async function salvar() {
         foto: fotoBase64,
         sinc: 0
     };
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put(item);
-    tx.oncomplete = () => { fecharTudo(); carregarDados(); };
-}
 
-async function excluir(id) {
-    if (!confirm('Excluir?')) return;
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).delete(id);
-    tx.oncomplete = () => {
-        fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'delete', id: id }) });
-        carregarDados();
-    };
+    await salvarLocal(item);
+    fecharTudo();
+    carregarDados();
+    sincronizar();
 }
-
-function verFoto(src) { document.getElementById('fotoGrande').src = src; document.getElementById('modalZoom').classList.add('active'); document.getElementById('overlay').classList.add('active'); }
 
 // Eventos
 document.getElementById('btnSalvar').onclick = salvar;
 document.getElementById('tabAdd').onclick = abrirForm;
-document.getElementById('tabResumo').onclick = () => { document.getElementById('view-resumo').style.display='block'; document.getElementById('view-grafico').style.display='none'; };
-document.getElementById('tabGrafico').onclick = () => { document.getElementById('view-resumo').style.display='none'; document.getElementById('view-grafico').style.display='block'; renderGrafico(); };
-document.getElementById('campoBusca').oninput = atualizarTela;
 document.getElementById('filtroMes').onchange = (e) => { mesAtual = e.target.value; carregarDados(); };
-
-document.getElementById('inputFoto').onchange = function(e) {
-    const reader = new FileReader();
-    reader.onload = function(event) {
-        const img = new Image();
-        img.onload = function() {
-            const canvas = document.createElement('canvas');
-            const MAX = 400;
-            const scale = MAX / img.width;
-            canvas.width = MAX; canvas.height = img.height * scale;
-            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-            fotoBase64 = canvas.toDataURL('image/jpeg', 0.7);
-            document.getElementById('imgPreview').src = fotoBase64;
-            document.getElementById('imgPreview').style.display = 'block';
-        };
-        img.src = event.target.result;
-    };
-    reader.readAsDataURL(e.target.files[0]);
+document.getElementById('campoBusca').oninput = atualizarTela;
+document.getElementById('tabResumo').onclick = () => {
+    document.getElementById('view-resumo').style.display='block';
+    document.getElementById('view-grafico').style.display='none';
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('tabResumo').classList.add('active');
 };
