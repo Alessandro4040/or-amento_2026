@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Meu Controle Financeiro</title>
+    <title>Finanças Familiar</title>
     
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -14,72 +14,57 @@
     <meta name="theme-color" content="#007bff">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, sans-serif; }
-        body { background: #f0f2f5; padding: 15px; padding-bottom: 90px; color: #333; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+        body { background: #f0f2f5; padding: 15px; padding-bottom: 90px; }
         .container { max-width: 500px; margin: 0 auto; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .status { font-size: 12px; padding: 5px 10px; border-radius: 15px; transition: all 0.3s; }
-        .online { background: #dcfce7; color: #166534; }
-        .offline { background: #fee2e2; color: #991b1b; }
+        .header { display: flex; justify-content: space-between; margin-bottom: 15px; }
+        .status { font-size: 12px; padding: 5px 10px; border-radius: 15px; background: #dcfce7; }
         .filtros { display: flex; gap: 8px; margin-bottom: 15px; }
-        input[type="month"], .busca { padding: 12px; border: 1px solid #ddd; border-radius: 10px; flex: 1; outline: none; }
+        input, select { width: 100%; padding: 12px; margin: 5px 0; border: 1px solid #ddd; border-radius: 10px; }
         .card-saldo { background: #fff; padding: 20px; border-radius: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 15px; }
-        .valor-principal { font-size: 28px; font-weight: bold; margin: 5px 0; }
+        .valor-principal { font-size: 28px; font-weight: bold; }
         .positivo { color: #22c55e; } .negativo { color: #ef4444; }
         .item { background: #fff; padding: 12px; border-radius: 15px; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; }
-        .mini-foto { width: 50px; height: 50px; border-radius: 8px; background: #eee; object-fit: cover; cursor: zoom-in; }
+        .mini-foto { width: 45px; height: 45px; border-radius: 8px; background: #eee; object-fit: cover; }
         .info { flex: 1; }
-        .tabs { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; display: flex; padding: 10px; border-top: 1px solid #eee; z-index: 100; }
-        .tab { flex: 1; text-align: center; font-size: 12px; color: #888; cursor: pointer; border: none; background: none; }
+        .tabs { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; display: flex; padding: 10px; border-top: 1px solid #eee; }
+        .tab { flex: 1; text-align: center; border: none; background: none; color: #888; font-size: 12px; cursor: pointer; }
         .tab.active { color: #007bff; font-weight: bold; }
         .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; z-index: 200; }
-        .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 400px; background: #fff; border-radius: 20px; padding: 20px; display: none; z-index: 300; }
+        .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; background: #fff; border-radius: 20px; padding: 20px; display: none; z-index: 300; }
         .modal.active, .overlay.active { display: block; }
-        input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 10px; }
-        .btn { width: 100%; padding: 12px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 10px; font-weight: bold; margin-top: 10px; cursor: pointer; }
         .btn-save { background: #007bff; color: #fff; }
-        .btn-cancel { background: #f3f4f6; color: #444; }
-        
-        #imgPreview { width: 100%; max-height: 150px; object-fit: cover; border-radius: 10px; margin: 10px 0; display: none; }
-
-        #modalZoom .modal-content { text-align: center; overflow: auto; -webkit-overflow-scrolling: touch; max-height: 80vh; }
-        #modalZoom img { width: 100%; height: auto; display: block; border-radius: 10px; }
+        .btn-cancel { background: #f3f4f6; }
+        #imgPreview { width: 100%; max-height: 150px; object-fit: cover; border-radius: 10px; margin-top: 10px; display: none; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h3>Finanças 💸</h3>
-            <div id="statusLabel" class="status online">Online</div>
-        </div>
+        <div class="header"><h3>Finanças 💸</h3><div id="statusLabel" class="status">Online</div></div>
         <div class="filtros">
             <input type="month" id="filtroMes">
-            <input type="text" id="campoBusca" class="busca" placeholder="🔍 Buscar...">
+            <input type="text" id="campoBusca" placeholder="🔍 Buscar...">
         </div>
         <div id="view-resumo">
             <div class="card-saldo">
                 <small>Saldo do Mês</small>
                 <div id="saldoTotal" class="valor-principal">R$ 0,00</div>
                 <div style="display:flex; justify-content: space-between; margin-top:10px;">
-                    <span class="positivo">Receitas: <b id="totalRec">R$ 0</b></span>
-                    <span class="negativo">Despesas: <b id="totalDes">R$ 0</b></span>
+                    <span class="positivo">Rec: <b id="totalRec">R$ 0</b></span>
+                    <span class="negativo">Desp: <b id="totalDes">R$ 0</b></span>
                 </div>
             </div>
             <div id="listaRecentes"></div>
         </div>
-        <div id="view-grafico" style="display:none;">
-            <canvas id="meuGrafico" style="max-height: 400px;"></canvas>
-        </div>
-        <button class="btn btn-cancel" id="btnExportar">📥 Baixar Relatório (CSV)</button>
+        <div id="view-grafico" style="display:none;"><canvas id="meuGrafico"></canvas></div>
     </div>
-
     <div class="tabs">
         <button class="tab active" id="tabResumo">📊 Resumo</button>
         <button class="tab" id="tabAdd">➕ Add</button>
         <button class="tab" id="tabGrafico">📈 Gráfico</button>
     </div>
-
-    <div class="overlay" id="overlay"></div>
+    <div class="overlay" id="overlay" onclick="fecharTudo()"></div>
     <div class="modal" id="modalForm">
         <h4 id="formTitle">Novo Lançamento</h4>
         <select id="tipo"><option value="Receita">Receita</option><option value="Despesa">Despesa</option></select>
@@ -87,22 +72,13 @@
         <input type="text" id="categoria" placeholder="Categoria">
         <input type="text" id="descricao" placeholder="Descrição">
         <input type="number" id="valor" placeholder="Valor R$">
-        
-        <img id="imgPreview" src="" alt="Preview">
-        
+        <img id="imgPreview">
         <button class="btn btn-cancel" onclick="document.getElementById('inputFoto').click()">📸 Foto</button>
         <input type="file" id="inputFoto" accept="image/*" style="display:none">
         <button class="btn btn-save" id="btnSalvar">Salvar</button>
         <button class="btn btn-cancel" onclick="fecharTudo()">Voltar</button>
     </div>
-
-    <div class="modal" id="modalZoom">
-        <div class="modal-content">
-            <img id="fotoGrande" src="" alt="Foto">
-            <button class="btn btn-cancel" onclick="fecharTudo()">Fechar</button>
-        </div>
-    </div>
-
+    <div class="modal" id="modalZoom"><img id="fotoGrande" style="width:100%"><button class="btn btn-cancel" onclick="fecharTudo()">Fechar</button></div>
     <script src="app.js"></script>
 </body>
 </html>
