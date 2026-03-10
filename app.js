@@ -1,4 +1,4 @@
-const API_URL = 'COLE_AQUI_A_SUA_URL_DA_IMPLANTACAO'; 
+const API_URL = 'https://script.google.com/macros/s/AKfycbzDQKaKjDgQh0UKCwWeE1AZC9vm3ZnEduFSYkt7VQsqlfaL9z02cno29IZRDOCZOxU6/exec'; 
 const DB_NAME = 'financas_db';
 const STORE = 'lançamentos';
 
