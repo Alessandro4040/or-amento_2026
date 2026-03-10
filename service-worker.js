@@ -1,11 +1,5 @@
-const CACHE_NAME = 'financas-v7';
-const assets = [
-  './',
-  './index.html',
-  './app.js',
-  './manifest.json',
-  'https://cdn.jsdelivr.net/npm/chart.js'
-];
+const CACHE_NAME = 'financas-v8';
+const assets = ['./', './index.html', './app.js', './manifest.json'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(assets)));
