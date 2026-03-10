@@ -1,15 +1,19 @@
 {
-  "name": "Controle Financeiro",
+  "name": "Controle Financeiro Familiar",
   "short_name": "Finanças",
+  "description": "App para controle de gastos e receitas com suporte a fotos.",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#007bff",
   "icons": [
     {
       "src": "https://cdn-icons-png.flaticon.com/512/2341/2341113.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
