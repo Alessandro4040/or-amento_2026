@@ -34,8 +34,8 @@ req.onsuccess = e => {
 function carregarLocal() {
     const tx = db.transaction(STORE, 'readonly');
     tx.objectStore(STORE).getAll().onsuccess = e => {
-        // Filtra os que não estão marcados para exclusão lógica
         lancamentos = e.target.result.filter(item => !item.excluido);
+        console.log('Lançamentos carregados do IndexedDB:', lancamentos); // LOG
         atualizarTela();
     };
 }
@@ -50,12 +50,14 @@ function atualizarTela() {
         const v = parseFloat(item.valor) || 0;
         item.tipo === 'Receita' ? rec += v : desp += v;
         
-        // CORREÇÃO DA FOTO: 
-        // Se item.foto for "Sim", "Não" ou estiver vazio, usa o placeholder.
+        // ---- CORREÇÃO DA EXIBIÇÃO DA FOTO ----
         let imagemSrc = 'https://via.placeholder.com/50?text=Sem+Foto';
-        if (item.foto && item.foto.length > 10) {
+        if (item.foto && typeof item.foto === 'string' && item.foto.length > 50 && item.foto.startsWith('data:image')) {
             imagemSrc = item.foto;
+        } else {
+            console.warn('Foto inválida para o item:', item.id, item.foto); // LOG
         }
+        // --------------------------------------
 
         const dataFormatada = item.data.split('T')[0].split('-').reverse().join('/');
         const statusSync = item.sinc === 0 ? '<span style="color: orange; font-size: 10px;">⏳</span>' : '';
@@ -64,7 +66,7 @@ function atualizarTela() {
             <div class="item">
                 <img class="mini-foto" src="${imagemSrc}" 
                     onclick="abrirZoom(this.src)" 
-                    onerror="this.src='https://via.placeholder.com/50?text=Erro'">
+                    onerror="this.src='https://via.placeholder.com/50?text=Erro'; console.log('Erro ao carregar imagem', this.src);">
                 <div class="info">
                     <strong>${item.descricao} ${statusSync}</strong>
                     <span>${item.categoria}</span>
@@ -94,29 +96,29 @@ async function sincronizar() {
         const todosItens = e.target.result;
         const pendentes = todosItens.filter(l => l.sinc === 0);
 
-        // 1. Enviar Pendentes e Exclusões (POST limpo, sem no-cors)
+        // 1. Enviar Pendentes e Exclusões
         for (let p of pendentes) {
             try {
                 const payload = p.excluido ? { action: 'delete', id: p.id } : p;
                 await fetch(API_URL, { 
                     method: 'POST', 
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Evita bloqueio de preflight CORS
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify(payload) 
                 });
                 
                 const txWrite = db.transaction(STORE, 'readwrite');
                 if (p.excluido) {
-                    txWrite.objectStore(STORE).delete(p.id); // Confirma exclusão do banco local
+                    txWrite.objectStore(STORE).delete(p.id);
                 } else {
                     p.sinc = 1;
-                    txWrite.objectStore(STORE).put(p); // Atualiza como sincronizado
+                    txWrite.objectStore(STORE).put(p);
                 }
             } catch (err) {
                 console.log("Falha ao subir o item: " + p.id);
             }
         }
 
-        // 2. Baixar a "Verdade" da Planilha e Limpar Cache Local Antigo
+        // 2. Baixar a "Verdade" da Planilha
         try {
             const res = await fetch(API_URL);
             const json = await res.json();
@@ -125,21 +127,27 @@ async function sincronizar() {
                 const txFinal = db.transaction(STORE, 'readwrite');
                 const store = txFinal.objectStore(STORE);
                 
-                // Remove tudo que já estava sincronizado localmente (preparando para a nova verdade)
+                // Remove tudo que já estava sincronizado
                 const localAtual = await new Promise(resolve => store.getAll().onsuccess = ev => resolve(ev.target.result));
                 localAtual.forEach(item => {
                     if (item.sinc === 1) store.delete(item.id);
                 });
 
-                // Insere a verdade absoluta que veio da planilha
+                // Insere os dados novos
                 json.data.forEach(item => {
-                    store.put({ ...item, id: item.id.toString(), valor: parseFloat(item.valor), sinc: 1 });
+                    store.put({ 
+                        ...item, 
+                        id: item.id.toString(), 
+                        valor: parseFloat(item.valor), 
+                        sinc: 1,
+                        foto: item.foto || '' // Garante string
+                    });
                 });
 
                 txFinal.oncomplete = () => {
                     document.getElementById('statusLabel').innerText = "✅ Atualizado";
                     document.getElementById('statusLabel').className = "status online";
-                    carregarLocal(); // Atualiza a tela com os dados reais da planilha
+                    carregarLocal();
                 };
             }
         } catch (e) {
@@ -166,6 +174,7 @@ document.getElementById('inputFoto').onchange = e => {
             fotoBase64 = canvas.toDataURL('image/jpeg', 0.4);
             document.getElementById('imgPreview').src = fotoBase64;
             document.getElementById('imgPreview').style.display = 'block';
+            console.log('Foto gerada (início):', fotoBase64.substring(0, 100) + '...'); // LOG
         };
         img.src = ev.target.result;
     };
@@ -195,11 +204,12 @@ function editar(id) {
     document.getElementById('valor').value = item.valor;
     
     fotoBase64 = item.foto;
-    if (fotoBase64) {
+    if (fotoBase64 && fotoBase64.startsWith('data:image')) {
         document.getElementById('imgPreview').src = fotoBase64;
         document.getElementById('imgPreview').style.display = 'block';
     } else {
         document.getElementById('imgPreview').style.display = 'none';
+        fotoBase64 = null;
     }
     document.getElementById('modalForm').classList.add('active');
     document.getElementById('overlay').classList.add('active');
@@ -208,14 +218,13 @@ function editar(id) {
 function excluir(id) {
     if (!confirm("Excluir este item?")) return;
     
-    // Exclusão Lógica para suportar o modo offline
     const tx = db.transaction(STORE, 'readwrite');
     const store = tx.objectStore(STORE);
     store.get(id).onsuccess = e => {
         let item = e.target.result;
         if(item) {
-            item.excluido = true; // Marca para exclusão
-            item.sinc = 0; // Coloca na fila de envio
+            item.excluido = true;
+            item.sinc = 0;
             store.put(item).onsuccess = () => {
                 carregarLocal();
                 sincronizar();
@@ -233,7 +242,7 @@ function salvar() {
         descricao: document.getElementById('descricao').value || 'S/D',
         valor: parseFloat(document.getElementById('valor').value) || 0,
         foto: fotoBase64 || '',
-        sinc: 0 // Nasce pendente para subir
+        sinc: 0
     };
     const tx = db.transaction(STORE, 'readwrite');
     tx.objectStore(STORE).put(item);
@@ -307,7 +316,7 @@ function renderGrafico() {
     });
 }
 
-// Sincroniza sempre que o app volta para a tela (Multiusuário)
+// Sincroniza sempre que o app volta para a tela
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') sincronizar();
 });
