@@ -1,5 +1,5 @@
 // INSIRA AQUI A SUA URL GERADA PELO GOOGLE APPS SCRIPT
-const API_URL = 'https://script.google.com/macros/s/AKfycbxsD2Jh6CSSrQqGBsZlEn_tF9a2HonhcoO3gvhQ7FKu63e2PmGaOv8og9xKJh_zCjjs/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbx4KPFSrKeKOQsYimMk_huk5BGj4H-O19q8Pjr4cSNJVfOGseHRubGYLmG_OkRQy9xE/exec';
 
 const DB_NAME = 'financas_v101';
 const STORE = 'dados';
