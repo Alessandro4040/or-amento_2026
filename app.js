@@ -1,11 +1,11 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbzDQKaKjDgQh0UKCwWeE1AZC9vm3ZnEduFSYkt7VQsqlfaL9z02cno29IZRDOCZOxU6/exec';
-const DB_NAME = 'financas_vFinal'; 
+// Atualizado para limpar os erros antigos que estão travando seu Chrome
+const DB_NAME = 'financas_v100'; 
 const STORE = 'dados';
 
 let db, chartInstance = null, lancamentos = [], fotoBase64 = null, editId = null;
 let mesAtual = new Date().toISOString().substring(0, 7);
 
-// Inicialização segura
 const req = indexedDB.open(DB_NAME, 1);
 req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, { keyPath: 'id' });
 req.onsuccess = e => {
@@ -14,12 +14,12 @@ req.onsuccess = e => {
     carregarLocal();
 };
 
-async function carregarLocal() {
+function carregarLocal() {
     const tx = db.transaction(STORE, 'readonly');
     tx.objectStore(STORE).getAll().onsuccess = e => {
         lancamentos = e.target.result;
         atualizarTela();
-        if (navigator.onLine) sincronizar();
+        sincronizar();
     };
 }
 
@@ -33,8 +33,6 @@ function atualizarTela() {
     filtrados.sort((a,b) => b.data.localeCompare(a.data)).forEach(item => {
         const v = parseFloat(item.valor) || 0;
         item.tipo === 'Receita' ? rec += v : desp += v;
-        
-        // Formatação de data BR e limpeza de Hora
         const dataFormatada = item.data.split('T')[0].split('-').reverse().join('/');
         
         lista.innerHTML += `
@@ -62,21 +60,32 @@ function atualizarTela() {
 }
 
 async function sincronizar() {
+    if (!navigator.onLine) return;
     document.getElementById('statusLabel').innerText = "🔄 Sincronizando...";
-    try {
-        // Envia pendentes
-        const pendentes = lancamentos.filter(l => l.sinc === 0);
-        for (let p of pendentes) {
-            await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
+    
+    // 1. Enviar Pendentes (Isolado para que o erro de um não trave o aplicativo)
+    const pendentes = lancamentos.filter(l => l.sinc === 0);
+    for (let p of pendentes) {
+        try {
+            await fetch(API_URL, { 
+                method: 'POST', 
+                mode: 'no-cors', // Evita bloqueios do Safari
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify(p) 
+            });
             p.sinc = 1;
             const tx = db.transaction(STORE, 'readwrite');
             tx.objectStore(STORE).put(p);
+        } catch (err) {
+            console.log("Falha ao subir um item, tentando o próximo...");
         }
+    }
 
-        // Puxa atualizados
+    // 2. Baixar Atualizados da Planilha
+    try {
         const res = await fetch(API_URL);
         const json = await res.json();
-        if (json.data) {
+        if (json && json.data) {
             const tx = db.transaction(STORE, 'readwrite');
             const store = tx.objectStore(STORE);
             store.clear();
@@ -85,7 +94,13 @@ async function sincronizar() {
             });
             tx.oncomplete = () => {
                 document.getElementById('statusLabel').innerText = "✅ Sincronizado";
-                carregarLocal();
+                
+                // Atualiza a tela sem loop infinito
+                const txRead = db.transaction(STORE, 'readonly');
+                txRead.objectStore(STORE).getAll().onsuccess = e => {
+                    lancamentos = e.target.result;
+                    atualizarTela();
+                };
             };
         }
     } catch (e) {
@@ -93,7 +108,35 @@ async function sincronizar() {
     }
 }
 
-// Funções de Ação
+// COMPRESSÃO AGRESSIVA DA CÂMERA DO IPHONE
+document.getElementById('inputFoto').onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            // Reduz bruscamente para 250 pixels para não dar erro na planilha do Google
+            const MAX = 250;
+            const scale = MAX / Math.max(img.width, img.height);
+            canvas.width = img.width * scale; 
+            canvas.height = img.height * scale;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            
+            // Qualidade em 0.4 (40%) reduz o tamanho absurdamente
+            fotoBase64 = canvas.toDataURL('image/jpeg', 0.4);
+            
+            document.getElementById('imgPreview').src = fotoBase64;
+            document.getElementById('imgPreview').style.display = 'block';
+        };
+        img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+};
+
 function editar(id) {
     const item = lancamentos.find(i => i.id === id);
     if (!item) return;
@@ -108,22 +151,30 @@ function editar(id) {
     if (fotoBase64) {
         document.getElementById('imgPreview').src = fotoBase64;
         document.getElementById('imgPreview').style.display = 'block';
+    } else {
+        document.getElementById('imgPreview').style.display = 'none';
     }
     document.getElementById('modalForm').classList.add('active');
     document.getElementById('overlay').classList.add('active');
 }
 
-async function excluir(id) {
+function excluir(id) {
     if (!confirm("Excluir este item?")) return;
     const tx = db.transaction(STORE, 'readwrite');
     tx.objectStore(STORE).delete(id);
     tx.oncomplete = () => {
-        fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'delete', id: id }) });
+        // Exclui no servidor sem travar a tela
+        fetch(API_URL, { 
+            method: 'POST', 
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ action: 'delete', id: id }) 
+        });
         carregarLocal();
     };
 }
 
-async function salvar() {
+function salvar() {
     const item = {
         id: editId || "ID" + Date.now(),
         tipo: document.getElementById('tipo').value,
@@ -131,7 +182,7 @@ async function salvar() {
         categoria: document.getElementById('categoria').value || 'Geral',
         descricao: document.getElementById('descricao').value || 'S/D',
         valor: parseFloat(document.getElementById('valor').value) || 0,
-        foto: fotoBase64,
+        foto: fotoBase64 || '',
         sinc: 0
     };
     const tx = db.transaction(STORE, 'readwrite');
@@ -142,7 +193,32 @@ async function salvar() {
     };
 }
 
-// Relatório e Gráfico
+function fecharTudo() { 
+    document.querySelectorAll('.modal, .overlay').forEach(el => el.classList.remove('active')); 
+}
+
+// Botões
+document.getElementById('tabAdd').onclick = () => { 
+    editId = null; 
+    fotoBase64 = null;
+    document.getElementById('formTitle').innerText = "Novo Item"; 
+    document.getElementById('imgPreview').style.display = 'none';
+    document.getElementById('modalForm').classList.add('active'); 
+    document.getElementById('overlay').classList.add('active'); 
+};
+document.getElementById('tabResumo').onclick = () => { 
+    document.getElementById('view-resumo').style.display='block'; 
+    document.getElementById('view-grafico').style.display='none'; 
+};
+document.getElementById('tabGrafico').onclick = () => { 
+    document.getElementById('view-resumo').style.display='none'; 
+    document.getElementById('view-grafico').style.display='block'; 
+    renderGrafico(); 
+};
+document.getElementById('btnSalvar').onclick = salvar;
+document.getElementById('filtroMes').onchange = e => { mesAtual = e.target.value; carregarLocal(); };
+
+// Exportar CSV
 document.getElementById('btnExportar').onclick = () => {
     let csv = "Data;Tipo;Categoria;Descricao;Valor\n";
     lancamentos.filter(i => i.data.startsWith(mesAtual)).forEach(i => {
@@ -159,7 +235,6 @@ function renderGrafico() {
     const filtrados = lancamentos.filter(i => i.data.startsWith(mesAtual) && i.tipo === 'Despesa');
     const caps = {};
     filtrados.forEach(i => caps[i.categoria] = (caps[i.categoria] || 0) + i.valor);
-    
     const ctx = document.getElementById('meuGrafico').getContext('2d');
     if (chartInstance) chartInstance.destroy();
     chartInstance = new Chart(ctx, {
@@ -171,30 +246,7 @@ function renderGrafico() {
     });
 }
 
-// Eventos de Foto e UI
-document.getElementById('inputFoto').onchange = e => {
-    const reader = new FileReader();
-    reader.onload = ev => {
-        const img = new Image();
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            const max = 300;
-            const scale = max / Math.max(img.width, img.height);
-            canvas.width = img.width * scale; canvas.height = img.height * scale;
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            fotoBase64 = canvas.toDataURL('image/jpeg', 0.6);
-            document.getElementById('imgPreview').src = fotoBase64;
-            document.getElementById('imgPreview').style.display = 'block';
-        };
-        img.src = ev.target.result;
-    };
-    reader.readAsDataURL(e.target.files[0]);
-};
-
-function fecharTudo() { document.querySelectorAll('.modal, .overlay').forEach(el => el.classList.remove('active')); }
-document.getElementById('tabAdd').onclick = () => { editId = null; document.getElementById('formTitle').innerText = "Novo Item"; document.getElementById('modalForm').classList.add('active'); document.getElementById('overlay').classList.add('active'); };
-document.getElementById('tabResumo').onclick = () => { document.getElementById('view-resumo').style.display='block'; document.getElementById('view-grafico').style.display='none'; };
-document.getElementById('tabGrafico').onclick = () => { document.getElementById('view-resumo').style.display='none'; document.getElementById('view-grafico').style.display='block'; renderGrafico(); };
-document.getElementById('btnSalvar').onclick = salvar;
-document.getElementById('filtroMes').onchange = e => { mesAtual = e.target.value; carregarLocal(); };
+// Sincroniza também quando volta para o App
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') sincronizar();
+});
