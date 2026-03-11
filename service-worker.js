@@ -3,7 +3,7 @@ const CACHE_NAME = 'financas-v20';
 const assets = [
   './',
   './index.html',
-  './apps.js'
+  './app.js'
 ];
 
 self.addEventListener('install', e => {
