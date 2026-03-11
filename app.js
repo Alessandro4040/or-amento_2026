@@ -49,15 +49,22 @@ function atualizarTela() {
     filtrados.sort((a,b) => b.data.localeCompare(a.data)).forEach(item => {
         const v = parseFloat(item.valor) || 0;
         item.tipo === 'Receita' ? rec += v : desp += v;
-        const dataFormatada = item.data.split('T')[0].split('-').reverse().join('/');
         
-        // Indicador visual se o item ainda não subiu para a planilha
-        const statusSync = item.sinc === 0 ? '<span style="color: orange; font-size: 10px;">⏳ Pendente</span>' : '';
+        // CORREÇÃO DA FOTO: 
+        // Se item.foto for "Sim", "Não" ou estiver vazio, usa o placeholder.
+        let imagemSrc = 'https://via.placeholder.com/50?text=Sem+Foto';
+        if (item.foto && item.foto.length > 10) {
+            imagemSrc = item.foto;
+        }
+
+        const dataFormatada = item.data.split('T')[0].split('-').reverse().join('/');
+        const statusSync = item.sinc === 0 ? '<span style="color: orange; font-size: 10px;">⏳</span>' : '';
         
         lista.innerHTML += `
             <div class="item">
-                <img class="mini-foto" src="${item.foto || 'https://via.placeholder.com/50'}" 
-                    onclick="abrirZoom(this.src)" onerror="this.src='https://via.placeholder.com/50'">
+                <img class="mini-foto" src="${imagemSrc}" 
+                    onclick="abrirZoom(this.src)" 
+                    onerror="this.src='https://via.placeholder.com/50?text=Erro'">
                 <div class="info">
                     <strong>${item.descricao} ${statusSync}</strong>
                     <span>${item.categoria}</span>
