@@ -1,51 +1,65 @@
-const API_URL = 'https://script.google.com/macros/s/AKfycbzDQKaKjDgQh0UKCwWeE1AZC9vm3ZnEduFSYkt7VQsqlfaL9z02cno29IZRDOCZOxU6/exec';
-const DB_NAME = 'financas_v101'; 
+// INSIRA AQUI A SUA URL GERADA PELO GOOGLE APPS SCRIPT
+const API_URL = 'https://script.google.com/macros/s/AKfycbxsD2Jh6CSSrQqGBsZlEn_tF9a2HonhcoO3gvhQ7FKu63e2PmGaOv8og9xKJh_zCjjs/exec';
+
+const DB_NAME = 'financas_v101';
 const STORE = 'dados';
 
 let db, chartInstance = null, lancamentos = [], fotoBase64 = null, editId = null;
 let mesAtual = new Date().toISOString().substring(0, 7);
 
-const req = indexedDB.open(DB_NAME, 2); // versão 2 para novo esquema
-req.onupgradeneeded = e => {
-    const store = e.target.result.createObjectStore(STORE, { keyPath: 'id' });
-    // Criar índice para filtrar deletados rapidamente (opcional)
-    store.createIndex('deleted', '_deleted');
-};
+// Gerenciamento de Rede
+function atualizarStatusRede() {
+    const statusLabel = document.getElementById('statusLabel');
+    if (navigator.onLine) {
+        statusLabel.innerText = "🌐 Online";
+        statusLabel.className = "status online";
+        sincronizar();
+    } else {
+        statusLabel.innerText = "⚠️ Offline";
+        statusLabel.className = "status offline";
+    }
+}
+window.addEventListener('online', atualizarStatusRede);
+window.addEventListener('offline', atualizarStatusRede);
+
+const req = indexedDB.open(DB_NAME, 1);
+req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, { keyPath: 'id' });
 req.onsuccess = e => {
     db = e.target.result;
     document.getElementById('filtroMes').value = mesAtual;
+    atualizarStatusRede();
     carregarLocal();
 };
 
 function carregarLocal() {
     const tx = db.transaction(STORE, 'readonly');
     tx.objectStore(STORE).getAll().onsuccess = e => {
-        lancamentos = e.target.result;
+        // Filtra os que não estão marcados para exclusão lógica
+        lancamentos = e.target.result.filter(item => !item.excluido);
         atualizarTela();
-        sincronizar();
     };
 }
 
 function atualizarTela() {
     const lista = document.getElementById('listaRecentes');
-    // Ignorar itens marcados como deletados
-    const ativos = lancamentos.filter(i => !i._deleted);
-    const filtrados = ativos.filter(i => i.data.substring(0, 7) === mesAtual);
-    
+    const filtrados = lancamentos.filter(i => i.data.substring(0, 7) === mesAtual);
     let rec = 0, desp = 0;
     lista.innerHTML = '';
-
+    
     filtrados.sort((a,b) => b.data.localeCompare(a.data)).forEach(item => {
         const v = parseFloat(item.valor) || 0;
         item.tipo === 'Receita' ? rec += v : desp += v;
         const dataFormatada = item.data.split('T')[0].split('-').reverse().join('/');
         
+        // Indicador visual se o item ainda não subiu para a planilha
+        const statusSync = item.sinc === 0 ? '<span style="color: orange; font-size: 10px;">⏳ Pendente</span>' : '';
+        
         lista.innerHTML += `
             <div class="item">
                 <img class="mini-foto" src="${item.foto || 'https://via.placeholder.com/50'}" 
-                     onclick="window.open(this.src)" onerror="this.src='https://via.placeholder.com/50'">
+                    onclick="abrirZoom(this.src)" onerror="this.src='https://via.placeholder.com/50'">
                 <div class="info">
-                    <strong>${item.descricao}</strong>
+                    <strong>${item.descricao} ${statusSync}</strong>
                     <span>${item.categoria}</span>
                     <small>${dataFormatada}</small>
                 </div>
@@ -65,129 +79,69 @@ function atualizarTela() {
 }
 
 async function sincronizar() {
-    if (!navigator.onLine) {
-        document.getElementById('statusLabel').innerText = "⚠️ Offline";
-        return;
-    }
+    if (!navigator.onLine) return;
     document.getElementById('statusLabel').innerText = "🔄 Sincronizando...";
 
-    // 1. Processar pendentes (sinc = 0) e deletados
-    const txPendentes = db.transaction(STORE, 'readwrite');
-    const storePendentes = txPendentes.objectStore(STORE);
-    const todos = await new Promise((resolve, reject) => {
-        const req = storePendentes.getAll();
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = reject;
-    });
+    const txRead = db.transaction(STORE, 'readonly');
+    txRead.objectStore(STORE).getAll().onsuccess = async e => {
+        const todosItens = e.target.result;
+        const pendentes = todosItens.filter(l => l.sinc === 0);
 
-    for (let item of todos) {
-        // Se for deletado, enviar ação de delete
-        if (item._deleted) {
+        // 1. Enviar Pendentes e Exclusões (POST limpo, sem no-cors)
+        for (let p of pendentes) {
             try {
+                const payload = p.excluido ? { action: 'delete', id: p.id } : p;
                 await fetch(API_URL, { 
                     method: 'POST', 
-                    mode: 'no-cors',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: JSON.stringify({ action: 'delete', id: item.id }) 
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Evita bloqueio de preflight CORS
+                    body: JSON.stringify(payload) 
                 });
-                // Remover definitivamente do banco local
-                storePendentes.delete(item.id);
-            } catch (err) {
-                console.log("Falha ao deletar item", item.id);
-            }
-        }
-        // Se for novo ou editado (sinc = 0 e não deletado)
-        else if (item.sinc === 0) {
-            try {
-                await fetch(API_URL, { 
-                    method: 'POST', 
-                    mode: 'no-cors',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: JSON.stringify(item) 
-                });
-                item.sinc = 1;
-                storePendentes.put(item);
-            } catch (err) {
-                console.log("Falha ao enviar item", item.id);
-            }
-        }
-    }
-
-    // 2. Buscar dados da planilha e fazer merge
-    try {
-        const res = await fetch(API_URL);
-        const json = await res.json();
-        if (json && json.data) {
-            const txMerge = db.transaction(STORE, 'readwrite');
-            const storeMerge = txMerge.objectStore(STORE);
-            
-            // Mapa dos itens do servidor
-            const serverMap = new Map();
-            json.data.forEach(item => {
-                serverMap.set(item.id.toString(), {
-                    ...item,
-                    valor: parseFloat(item.valor),
-                    sinc: 1,
-                    _deleted: false // garantia
-                });
-            });
-
-            // Obter todos os locais novamente (pode ter mudado durante o loop anterior)
-            const locais = await new Promise((resolve, reject) => {
-                const req = storeMerge.getAll();
-                req.onsuccess = () => resolve(req.result);
-                req.onerror = reject;
-            });
-
-            // Para cada item local, decidir o que fazer
-            for (let local of locais) {
-                const serverItem = serverMap.get(local.id);
                 
-                // Se local está marcado como deletado, mantemos (já foi processado ou falhou)
-                if (local._deleted) {
-                    continue;
-                }
-                
-                if (serverItem) {
-                    // Item existe nos dois lugares
-                    if (local.sinc === 1) {
-                        // Já sincronizado: servidor é mais recente (sobrescreve)
-                        storeMerge.put(serverItem);
-                    } else {
-                        // local.sinc === 0: alteração local ainda não enviada, preservar local
-                        // (não faz nada, mantém local)
-                    }
-                    // Remove do map para depois inserir os que não existem localmente
-                    serverMap.delete(local.id);
+                const txWrite = db.transaction(STORE, 'readwrite');
+                if (p.excluido) {
+                    txWrite.objectStore(STORE).delete(p.id); // Confirma exclusão do banco local
                 } else {
-                    // Item só existe localmente, não está no servidor
-                    // Se sinc === 1, algo errado (item que sumiu do servidor), mantemos local
-                    // Se sinc === 0, é novo, mantemos
-                    // Não faz nada
+                    p.sinc = 1;
+                    txWrite.objectStore(STORE).put(p); // Atualiza como sincronizado
                 }
+            } catch (err) {
+                console.log("Falha ao subir o item: " + p.id);
             }
-
-            // Inserir itens do servidor que não existem localmente
-            for (let serverItem of serverMap.values()) {
-                storeMerge.put(serverItem);
-            }
-
-            // Atualizar lancamentos e tela
-            txMerge.oncomplete = () => {
-                const txRead = db.transaction(STORE, 'readonly');
-                txRead.objectStore(STORE).getAll().onsuccess = e => {
-                    lancamentos = e.target.result;
-                    atualizarTela();
-                    document.getElementById('statusLabel').innerText = "✅ Sincronizado";
-                };
-            };
         }
-    } catch (e) {
-        document.getElementById('statusLabel').innerText = "⚠️ Offline";
-    }
+
+        // 2. Baixar a "Verdade" da Planilha e Limpar Cache Local Antigo
+        try {
+            const res = await fetch(API_URL);
+            const json = await res.json();
+            
+            if (json && json.data) {
+                const txFinal = db.transaction(STORE, 'readwrite');
+                const store = txFinal.objectStore(STORE);
+                
+                // Remove tudo que já estava sincronizado localmente (preparando para a nova verdade)
+                const localAtual = await new Promise(resolve => store.getAll().onsuccess = ev => resolve(ev.target.result));
+                localAtual.forEach(item => {
+                    if (item.sinc === 1) store.delete(item.id);
+                });
+
+                // Insere a verdade absoluta que veio da planilha
+                json.data.forEach(item => {
+                    store.put({ ...item, id: item.id.toString(), valor: parseFloat(item.valor), sinc: 1 });
+                });
+
+                txFinal.oncomplete = () => {
+                    document.getElementById('statusLabel').innerText = "✅ Atualizado";
+                    document.getElementById('statusLabel').className = "status online";
+                    carregarLocal(); // Atualiza a tela com os dados reais da planilha
+                };
+            }
+        } catch (e) {
+            atualizarStatusRede();
+        }
+    };
 }
 
-// COMPRESSÃO DA CÂMERA
+// Lógica de Foto e Zoom
 document.getElementById('inputFoto').onchange = e => {
     const file = e.target.files[0];
     if (!file) return;
@@ -200,12 +154,9 @@ document.getElementById('inputFoto').onchange = e => {
             const scale = MAX / Math.max(img.width, img.height);
             canvas.width = img.width * scale; 
             canvas.height = img.height * scale;
-            
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            
             fotoBase64 = canvas.toDataURL('image/jpeg', 0.4);
-            
             document.getElementById('imgPreview').src = fotoBase64;
             document.getElementById('imgPreview').style.display = 'block';
         };
@@ -214,6 +165,17 @@ document.getElementById('inputFoto').onchange = e => {
     reader.readAsDataURL(file);
 };
 
+function abrirZoom(src) {
+    if(src && !src.includes('placeholder')) {
+        document.getElementById('zoomedImg').src = src;
+        document.getElementById('zoomOverlay').classList.add('active');
+    }
+}
+function fecharZoom() {
+    document.getElementById('zoomOverlay').classList.remove('active');
+}
+
+// Operações CRUD Local
 function editar(id) {
     const item = lancamentos.find(i => i.id === id);
     if (!item) return;
@@ -224,6 +186,7 @@ function editar(id) {
     document.getElementById('categoria').value = item.categoria;
     document.getElementById('descricao').value = item.descricao;
     document.getElementById('valor').value = item.valor;
+    
     fotoBase64 = item.foto;
     if (fotoBase64) {
         document.getElementById('imgPreview').src = fotoBase64;
@@ -238,18 +201,19 @@ function editar(id) {
 function excluir(id) {
     if (!confirm("Excluir este item?")) return;
     
-    // Marcar como deletado no banco (não remove ainda)
+    // Exclusão Lógica para suportar o modo offline
     const tx = db.transaction(STORE, 'readwrite');
     const store = tx.objectStore(STORE);
-    const item = lancamentos.find(i => i.id === id);
-    if (item) {
-        item._deleted = true;
-        item.sinc = 0; // pendente
-        store.put(item);
-    }
-    tx.oncomplete = () => {
-        carregarLocal(); // recarrega e filtra os deletados
-        sincronizar(); // tenta enviar a exclusão imediatamente se online
+    store.get(id).onsuccess = e => {
+        let item = e.target.result;
+        if(item) {
+            item.excluido = true; // Marca para exclusão
+            item.sinc = 0; // Coloca na fila de envio
+            store.put(item).onsuccess = () => {
+                carregarLocal();
+                sincronizar();
+            };
+        }
     };
 }
 
@@ -262,47 +226,56 @@ function salvar() {
         descricao: document.getElementById('descricao').value || 'S/D',
         valor: parseFloat(document.getElementById('valor').value) || 0,
         foto: fotoBase64 || '',
-        sinc: 0,
-        _deleted: false
+        sinc: 0 // Nasce pendente para subir
     };
     const tx = db.transaction(STORE, 'readwrite');
     tx.objectStore(STORE).put(item);
     tx.oncomplete = () => {
         fecharTudo();
         carregarLocal();
+        sincronizar();
     };
 }
 
 function fecharTudo() { 
-    document.querySelectorAll('.modal, .overlay').forEach(el => el.classList.remove('active')); 
+    document.querySelectorAll('.modal, .overlay, .modal-form').forEach(el => el.classList.remove('active'));
 }
 
-// Botões
+// Botões de Navegação
 document.getElementById('tabAdd').onclick = () => { 
     editId = null; 
     fotoBase64 = null;
-    document.getElementById('formTitle').innerText = "Novo Item"; 
+    document.getElementById('formTitle').innerText = "Novo Item";
     document.getElementById('imgPreview').style.display = 'none';
+    document.getElementById('descricao').value = '';
+    document.getElementById('valor').value = '';
+    document.getElementById('data').value = new Date().toISOString().split('T')[0];
     document.getElementById('modalForm').classList.add('active'); 
     document.getElementById('overlay').classList.add('active'); 
 };
+
 document.getElementById('tabResumo').onclick = () => { 
     document.getElementById('view-resumo').style.display='block'; 
     document.getElementById('view-grafico').style.display='none'; 
+    document.getElementById('tabResumo').classList.add('active');
+    document.getElementById('tabGrafico').classList.remove('active');
 };
+
 document.getElementById('tabGrafico').onclick = () => { 
     document.getElementById('view-resumo').style.display='none'; 
     document.getElementById('view-grafico').style.display='block'; 
+    document.getElementById('tabGrafico').classList.add('active');
+    document.getElementById('tabResumo').classList.remove('active');
     renderGrafico(); 
 };
+
 document.getElementById('btnSalvar').onclick = salvar;
-document.getElementById('filtroMes').onchange = e => { mesAtual = e.target.value; atualizarTela(); }; // só atualiza tela, não recarrega tudo
+document.getElementById('filtroMes').onchange = e => { mesAtual = e.target.value; carregarLocal(); };
 
 // Exportar CSV
 document.getElementById('btnExportar').onclick = () => {
-    const ativos = lancamentos.filter(i => !i._deleted && i.data.startsWith(mesAtual));
     let csv = "Data;Tipo;Categoria;Descricao;Valor\n";
-    ativos.forEach(i => {
+    lancamentos.filter(i => i.data.startsWith(mesAtual)).forEach(i => {
         csv += `${i.data};${i.tipo};${i.categoria};${i.descricao};${i.valor}\n`;
     });
     const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
@@ -313,8 +286,7 @@ document.getElementById('btnExportar').onclick = () => {
 };
 
 function renderGrafico() {
-    const ativos = lancamentos.filter(i => !i._deleted);
-    const filtrados = ativos.filter(i => i.data.startsWith(mesAtual) && i.tipo === 'Despesa');
+    const filtrados = lancamentos.filter(i => i.data.startsWith(mesAtual) && i.tipo === 'Despesa');
     const caps = {};
     filtrados.forEach(i => caps[i.categoria] = (caps[i.categoria] || 0) + i.valor);
     const ctx = document.getElementById('meuGrafico').getContext('2d');
@@ -328,9 +300,7 @@ function renderGrafico() {
     });
 }
 
-// Sincroniza também quando volta para o App
+// Sincroniza sempre que o app volta para a tela (Multiusuário)
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') sincronizar();
 });
-
-window.addEventListener('online', sincronizar);
