@@ -1,6 +1,5 @@
 // INSIRA AQUI A SUA URL GERADA PELO GOOGLE APPS SCRIPT
-const API_URL = 'https://script.google.com/macros/s/AKfycbzgYeoaMcNuk7f1e101KhmOVy8g-2djKvkainSmytZlb73wSyH-N5sGl3XFKxTe4yWH/exec';
-
+const API_URL = 'https://script.google.com/macros/s/AKfycbzgYeoaMcNuk7f1e101KhmOVy8g-2djKvkainSmytZlb73wSyH-N5sGl3XFKxTe4yWH/exec
 const DB_NAME = 'financas_v101';
 const STORE = 'dados';
 
@@ -174,10 +173,15 @@ function abrirZoom(src) {
     if(src && !src.includes('placeholder')) {
         document.getElementById('zoomedImg').src = src;
         document.getElementById('zoomOverlay').classList.add('active');
+        // NOVA LÓGICA: Libera o zoom do iPhone dinamicamente
+        document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover');
     }
 }
+
 function fecharZoom() {
     document.getElementById('zoomOverlay').classList.remove('active');
+    // NOVA LÓGICA: Trava o zoom novamente para proteger a interface do App
+    document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover');
 }
 
 // Operações CRUD Local
