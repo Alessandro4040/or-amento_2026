@@ -1,13 +1,10 @@
-// INSIRA AQUI A SUA URL GERADA PELO GOOGLE APPS SCRIPT
-const API_URL = 'https://script.google.com/macros/s/AKfycbx4KPFSrKeKOQsYimMk_huk5BGj4H-O19q8Pjr4cSNJVfOGseHRubGYLmG_OkRQy9xE/exec';
-
+const API_URL = 'https://script.google.com/macros/s/AKfycbzoX0E20LBtp7RUdqaD1EC16593tK7R7ppm24rewRF_sBQThKOGaTDAuVXdhYKV35hJ/exec';
 const DB_NAME = 'financas_v101';
 const STORE = 'dados';
 
 let db, chartInstance = null, lancamentos = [], fotoBase64 = null, editId = null;
 let mesAtual = new Date().toISOString().substring(0, 7);
 
-// Gerenciamento de Rede
 function atualizarStatusRede() {
     const statusLabel = document.getElementById('statusLabel');
     if (navigator.onLine) {
@@ -32,263 +29,190 @@ req.onsuccess = e => {
 };
 
 function carregarLocal() {
-    const tx = db.transaction(STORE, 'readonly');
-    tx.objectStore(STORE).getAll().onsuccess = e => {
-        lancamentos = e.target.result.filter(item => !item.excluido);
-        console.log('Lançamentos carregados do IndexedDB:', lancamentos); // LOG
-        atualizarTela();
+    const t = db.transaction(STORE, 'readonly').objectStore(STORE).getAll();
+    t.onsuccess = () => {
+        lancamentos = t.result;
+        renderizar();
     };
-}
-
-function atualizarTela() {
-    const lista = document.getElementById('listaRecentes');
-    const filtrados = lancamentos.filter(i => i.data.substring(0, 7) === mesAtual);
-    let rec = 0, desp = 0;
-    lista.innerHTML = '';
-    
-    filtrados.sort((a,b) => b.data.localeCompare(a.data)).forEach(item => {
-        const v = parseFloat(item.valor) || 0;
-        item.tipo === 'Receita' ? rec += v : desp += v;
-        
-        // ---- CORREÇÃO DA EXIBIÇÃO DA FOTO ----
-        let imagemSrc = 'https://via.placeholder.com/50?text=Sem+Foto';
-        if (item.foto && typeof item.foto === 'string' && item.foto.length > 50 && item.foto.startsWith('data:image')) {
-            imagemSrc = item.foto;
-        } else {
-            console.warn('Foto inválida para o item:', item.id, item.foto); // LOG
-        }
-        // --------------------------------------
-
-        const dataFormatada = item.data.split('T')[0].split('-').reverse().join('/');
-        const statusSync = item.sinc === 0 ? '<span style="color: orange; font-size: 10px;">⏳</span>' : '';
-        
-        lista.innerHTML += `
-            <div class="item">
-                <img class="mini-foto" src="${imagemSrc}" 
-                    onclick="abrirZoom(this.src)" 
-                    onerror="this.src='https://via.placeholder.com/50?text=Erro'; console.log('Erro ao carregar imagem', this.src);">
-                <div class="info">
-                    <strong>${item.descricao} ${statusSync}</strong>
-                    <span>${item.categoria}</span>
-                    <small>${dataFormatada}</small>
-                </div>
-                <div class="acoes">
-                    <b style="color:${item.tipo === 'Receita' ? 'var(--s)' : 'var(--d)'}">R$ ${v.toFixed(2)}</b>
-                    <div>
-                        <button class="btn-acao" onclick="editar('${item.id}')">Editar</button>
-                        <button class="btn-acao btn-excluir" onclick="excluir('${item.id}')">Excluir</button>
-                    </div>
-                </div>
-            </div>`;
-    });
-
-    document.getElementById('saldoTotal').innerText = `R$ ${(rec - desp).toFixed(2)}`;
-    document.getElementById('totalRec').innerText = `R$ ${rec.toFixed(2)}`;
-    document.getElementById('totalDes').innerText = `R$ ${desp.toFixed(2)}`;
 }
 
 async function sincronizar() {
     if (!navigator.onLine) return;
-    document.getElementById('statusLabel').innerText = "🔄 Sincronizando...";
-
-    const txRead = db.transaction(STORE, 'readonly');
-    txRead.objectStore(STORE).getAll().onsuccess = async e => {
-        const todosItens = e.target.result;
-        const pendentes = todosItens.filter(l => l.sinc === 0);
-
-        // 1. Enviar Pendentes e Exclusões
-        for (let p of pendentes) {
-            try {
-                const payload = p.excluido ? { action: 'delete', id: p.id } : p;
-                await fetch(API_URL, { 
-                    method: 'POST', 
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify(payload) 
+    try {
+        const res = await fetch(API_URL);
+        const json = await res.json();
+        if (json.data) {
+            const tx = db.transaction(STORE, 'readwrite');
+            const store = tx.objectStore(STORE);
+            // Mapeia os dados vindo do Google para o formato local
+            json.data.forEach(item => {
+                store.put({
+                    id: item.id,
+                    data: item.data,
+                    categoria: item.categoria,
+                    descricao: item.descricao,
+                    valor: parseFloat(item.valor),
+                    tipo: item.tipo,
+                    foto: item.fotoBase64 || item.foto // Prioriza a string Base64
                 });
-                
-                const txWrite = db.transaction(STORE, 'readwrite');
-                if (p.excluido) {
-                    txWrite.objectStore(STORE).delete(p.id);
-                } else {
-                    p.sinc = 1;
-                    txWrite.objectStore(STORE).put(p);
-                }
-            } catch (err) {
-                console.log("Falha ao subir o item: " + p.id);
-            }
+            });
+            tx.oncomplete = carregarLocal;
         }
+    } catch (e) { console.error("Erro na sincronização:", e); }
+}
 
-        // 2. Baixar a "Verdade" da Planilha
-        try {
-            const res = await fetch(API_URL);
-            const json = await res.json();
-            
-            if (json && json.data) {
-                const txFinal = db.transaction(STORE, 'readwrite');
-                const store = txFinal.objectStore(STORE);
-                
-                // Remove tudo que já estava sincronizado
-                const localAtual = await new Promise(resolve => store.getAll().onsuccess = ev => resolve(ev.target.result));
-                localAtual.forEach(item => {
-                    if (item.sinc === 1) store.delete(item.id);
-                });
+function renderizar() {
+    const lista = document.getElementById('lista');
+    lista.innerHTML = '';
+    let totalR = 0, totalD = 0;
 
-                // Insere os dados novos
-                json.data.forEach(item => {
-                    store.put({ 
-                        ...item, 
-                        id: item.id.toString(), 
-                        valor: parseFloat(item.valor), 
-                        sinc: 1,
-                        foto: item.foto || '' // Garante string
-                    });
-                });
+    const filtrados = lancamentos
+        .filter(i => i.data.startsWith(mesAtual))
+        .sort((a, b) => new Date(b.data) - new Date(a.data));
 
-                txFinal.oncomplete = () => {
-                    document.getElementById('statusLabel').innerText = "✅ Atualizado";
-                    document.getElementById('statusLabel').className = "status online";
-                    carregarLocal();
-                };
-            }
-        } catch (e) {
-            atualizarStatusRede();
+    filtrados.forEach(i => {
+        if (i.tipo === 'Receita') totalR += i.valor; else totalD += i.valor;
+
+        const div = document.createElement('div');
+        div.className = 'item';
+        // Verifica se existe string de imagem válida
+        const temFoto = i.foto && i.foto.startsWith('data:image');
+        
+        div.innerHTML = `
+            <div style="flex:1">
+                <small>${i.data.split('-').reverse().join('/')}</small><br>
+                <strong>${i.categoria}</strong><br>
+                <small>${i.descricao}</small>
+            </div>
+            <div style="text-align:right; margin-right:10px">
+                <strong style="color:var(--${i.tipo === 'Receita' ? 's' : 'd'})">
+                    ${i.tipo === 'Receita' ? '+' : '-'} R$ ${i.valor.toFixed(2)}
+                </strong><br>
+                ${temFoto ? `<img src="${i.foto}" class="thumb" onclick="zoom('${i.foto}')">` : ''}
+            </div>
+            <div class="actions">
+                <button onclick="editar('${i.id}')">✏️</button>
+                <button onclick="deletar('${i.id}')">🗑️</button>
+            </div>
+        `;
+        lista.appendChild(div);
+    });
+
+    document.getElementById('resumo').innerHTML = `
+        <div class="card">Total Receitas<br><strong style="color:var(--s)">R$ ${totalR.toFixed(2)}</strong></div>
+        <div class="card">Total Despesas<br><strong style="color:var(--d)">R$ ${totalD.toFixed(2)}</strong></div>
+        <div class="card">Saldo<br><strong>R$ ${(totalR - totalD).toFixed(2)}</strong></div>
+    `;
+    renderGrafico();
+}
+
+function salvar() {
+    const btn = document.getElementById('btnSalvar');
+    btn.disabled = true;
+    btn.innerText = "Salvando...";
+
+    const dado = {
+        id: editId || 'ID' + Date.now(),
+        data: document.getElementById('data').value,
+        categoria: document.getElementById('categoria').value,
+        descricao: document.getElementById('descricao').value,
+        valor: parseFloat(document.getElementById('valor').value),
+        tipo: document.getElementById('tipo').value,
+        foto: fotoBase64
+    };
+
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).put(dado);
+    tx.oncomplete = () => {
+        if (navigator.onLine) {
+            fetch(API_URL, { method: 'POST', body: JSON.stringify(dado) })
+                .then(() => { sincronizar(); fecharTudo(); });
+        } else {
+            carregarLocal();
+            fecharTudo();
         }
     };
 }
 
-// Lógica de Foto e Zoom
+// --- Funções de UI ---
 document.getElementById('inputFoto').onchange = e => {
-    const file = e.target.files[0];
-    if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => {
-        const img = new Image();
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const MAX = 250;
-            const scale = MAX / Math.max(img.width, img.height);
-            canvas.width = img.width * scale; 
-            canvas.height = img.height * scale;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            fotoBase64 = canvas.toDataURL('image/jpeg', 0.4);
-            document.getElementById('imgPreview').src = fotoBase64;
-            document.getElementById('imgPreview').style.display = 'block';
-            console.log('Foto gerada (início):', fotoBase64.substring(0, 100) + '...'); // LOG
-        };
-        img.src = ev.target.result;
+    reader.onload = () => {
+        fotoBase64 = reader.result;
+        const img = document.getElementById('imgPreview');
+        img.src = fotoBase64;
+        img.style.display = 'block';
     };
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(e.target.files[0]);
 };
 
-function abrirZoom(src) {
-    if(src && !src.includes('placeholder')) {
-        document.getElementById('zoomedImg').src = src;
-        document.getElementById('zoomOverlay').classList.add('active');
-    }
-}
-function fecharZoom() {
-    document.getElementById('zoomOverlay').classList.remove('active');
+function deletar(id) {
+    if (!confirm("Excluir?")) return;
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).delete(id);
+    tx.oncomplete = () => {
+        if (navigator.onLine) fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'delete', id }) }).then(sincronizar);
+        else carregarLocal();
+    };
 }
 
-// Operações CRUD Local
 function editar(id) {
     const item = lancamentos.find(i => i.id === id);
-    if (!item) return;
-    editId = id;
-    document.getElementById('formTitle').innerText = "Editar Item";
-    document.getElementById('tipo').value = item.tipo;
-    document.getElementById('data').value = item.data.split('T')[0];
+    editId = item.id;
+    document.getElementById('data').value = item.data;
     document.getElementById('categoria').value = item.categoria;
     document.getElementById('descricao').value = item.descricao;
     document.getElementById('valor').value = item.valor;
-    
+    document.getElementById('tipo').value = item.tipo;
     fotoBase64 = item.foto;
-    if (fotoBase64 && fotoBase64.startsWith('data:image')) {
-        document.getElementById('imgPreview').src = fotoBase64;
-        document.getElementById('imgPreview').style.display = 'block';
-    } else {
-        document.getElementById('imgPreview').style.display = 'none';
-        fotoBase64 = null;
+    if (fotoBase64) {
+        const img = document.getElementById('imgPreview');
+        img.src = fotoBase64;
+        img.style.display = 'block';
     }
+    abrirModal();
+}
+
+function abrirModal() {
     document.getElementById('modalForm').classList.add('active');
     document.getElementById('overlay').classList.add('active');
 }
 
-function excluir(id) {
-    if (!confirm("Excluir este item?")) return;
-    
-    const tx = db.transaction(STORE, 'readwrite');
-    const store = tx.objectStore(STORE);
-    store.get(id).onsuccess = e => {
-        let item = e.target.result;
-        if(item) {
-            item.excluido = true;
-            item.sinc = 0;
-            store.put(item).onsuccess = () => {
-                carregarLocal();
-                sincronizar();
-            };
-        }
-    };
-}
-
-function salvar() {
-    const item = {
-        id: editId || "ID" + Date.now(),
-        tipo: document.getElementById('tipo').value,
-        data: document.getElementById('data').value,
-        categoria: document.getElementById('categoria').value || 'Geral',
-        descricao: document.getElementById('descricao').value || 'S/D',
-        valor: parseFloat(document.getElementById('valor').value) || 0,
-        foto: fotoBase64 || '',
-        sinc: 0
-    };
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put(item);
-    tx.oncomplete = () => {
-        fecharTudo();
-        carregarLocal();
-        sincronizar();
-    };
-}
-
-function fecharTudo() { 
-    document.querySelectorAll('.modal, .overlay, .modal-form').forEach(el => el.classList.remove('active'));
-}
-
-// Botões de Navegação
-document.getElementById('tabAdd').onclick = () => { 
-    editId = null; 
+function fecharTudo() {
+    document.getElementById('modalForm').classList.remove('active');
+    document.getElementById('overlay').classList.remove('active');
+    editId = null;
     fotoBase64 = null;
-    document.getElementById('formTitle').innerText = "Novo Item";
     document.getElementById('imgPreview').style.display = 'none';
-    document.getElementById('descricao').value = '';
-    document.getElementById('valor').value = '';
-    document.getElementById('data').value = new Date().toISOString().split('T')[0];
-    document.getElementById('modalForm').classList.add('active'); 
-    document.getElementById('overlay').classList.add('active'); 
+    document.getElementById('btnSalvar').disabled = false;
+    document.getElementById('btnSalvar').innerText = "Salvar";
+    // Limpa campos
+    ['categoria', 'descricao', 'valor'].forEach(id => document.getElementById(id).value = '');
+}
+
+function zoom(src) {
+    document.getElementById('zoomedImg').src = src;
+    document.getElementById('zoomOverlay').classList.add('active');
+}
+
+function fecharZoom() {
+    document.getElementById('zoomOverlay').classList.remove('active');
+}
+
+document.getElementById('tabLancamentos').onclick = () => {
+    document.getElementById('viewLancamentos').style.display = 'block';
+    document.getElementById('viewGrafico').style.display = 'none';
 };
 
-document.getElementById('tabResumo').onclick = () => { 
-    document.getElementById('view-resumo').style.display='block'; 
-    document.getElementById('view-grafico').style.display='none'; 
-    document.getElementById('tabResumo').classList.add('active');
-    document.getElementById('tabGrafico').classList.remove('active');
-};
-
-document.getElementById('tabGrafico').onclick = () => { 
-    document.getElementById('view-resumo').style.display='none'; 
-    document.getElementById('view-grafico').style.display='block'; 
-    document.getElementById('tabGrafico').classList.add('active');
-    document.getElementById('tabResumo').classList.remove('active');
+document.getElementById('tabGrafico').onclick = () => {
+    document.getElementById('viewLancamentos').style.display = 'none';
+    document.getElementById('viewGrafico').style.display = 'block';
     renderGrafico(); 
 };
 
 document.getElementById('btnSalvar').onclick = salvar;
 document.getElementById('filtroMes').onchange = e => { mesAtual = e.target.value; carregarLocal(); };
 
-// Exportar CSV
 document.getElementById('btnExportar').onclick = () => {
     let csv = "Data;Tipo;Categoria;Descricao;Valor\n";
     lancamentos.filter(i => i.data.startsWith(mesAtual)).forEach(i => {
@@ -311,12 +235,8 @@ function renderGrafico() {
         type: 'doughnut',
         data: {
             labels: Object.keys(caps),
-            datasets: [{ data: Object.values(caps), backgroundColor: ['#007bff','#28a745','#ffc107','#dc3545','#6610f2'] }]
-        }
+            datasets: [{ data: Object.values(caps), backgroundColor: ['#007bff', '#22c55e', '#ef4444', '#f59e0b', '#6366f1', '#ec4899'] }]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
     });
 }
-
-// Sincroniza sempre que o app volta para a tela
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') sincronizar();
-});
