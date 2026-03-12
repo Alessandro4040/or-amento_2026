@@ -1,5 +1,5 @@
-// INSIRA AQUI A SUA URL GERADA PELO GOOGLE APPS SCRIPT
-const API_URL = 'https://script.google.com/macros/s/AKfycbzgYeoaMcNuk7f1e101KhmOVy8g-2djKvkainSmytZlb73wSyH-N5sGl3XFKxTe4yWH/exec
+const API_URL = 'https://script.google.com/macros/s/AKfycbxsD2Jh6CSSrQqGBsZlEn_tF9a2HonhcoO3gvhQ7FKu63e2PmGaOv8og9xKJh_zCjjs/exec';
+
 const DB_NAME = 'financas_v101';
 const STORE = 'dados';
 
@@ -44,11 +44,13 @@ function atualizarTela() {
     const filtrados = lancamentos.filter(i => i.data.substring(0, 7) === mesAtual);
     let rec = 0, desp = 0;
     lista.innerHTML = '';
+    
     filtrados.sort((a,b) => b.data.localeCompare(a.data)).forEach(item => {
         const v = parseFloat(item.valor) || 0;
         item.tipo === 'Receita' ? rec += v : desp += v;
         
         // CORREÇÃO DA FOTO: 
+        // Se item.foto for "Sim", "Não" ou estiver vazio, usa o placeholder.
         let imagemSrc = 'https://via.placeholder.com/50?text=Sem+Foto';
         if (item.foto && item.foto.length > 10) {
             imagemSrc = item.foto;
@@ -91,22 +93,22 @@ async function sincronizar() {
         const todosItens = e.target.result;
         const pendentes = todosItens.filter(l => l.sinc === 0);
 
-        // 1. Enviar Pendentes e Exclusões 
+        // 1. Enviar Pendentes e Exclusões (POST limpo, sem no-cors)
         for (let p of pendentes) {
             try {
                 const payload = p.excluido ? { action: 'delete', id: p.id } : p;
                 await fetch(API_URL, { 
                     method: 'POST', 
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Evita bloqueio de preflight CORS
                     body: JSON.stringify(payload) 
                 });
                 
                 const txWrite = db.transaction(STORE, 'readwrite');
                 if (p.excluido) {
-                    txWrite.objectStore(STORE).delete(p.id);
+                    txWrite.objectStore(STORE).delete(p.id); // Confirma exclusão do banco local
                 } else {
                     p.sinc = 1;
-                    txWrite.objectStore(STORE).put(p); 
+                    txWrite.objectStore(STORE).put(p); // Atualiza como sincronizado
                 }
             } catch (err) {
                 console.log("Falha ao subir o item: " + p.id);
@@ -122,21 +124,21 @@ async function sincronizar() {
                 const txFinal = db.transaction(STORE, 'readwrite');
                 const store = txFinal.objectStore(STORE);
                 
+                // Remove tudo que já estava sincronizado localmente (preparando para a nova verdade)
                 const localAtual = await new Promise(resolve => store.getAll().onsuccess = ev => resolve(ev.target.result));
                 localAtual.forEach(item => {
                     if (item.sinc === 1) store.delete(item.id);
                 });
-                
-                // Insere a verdade absoluta que veio da planilha (CORREÇÃO DA FOTO)
+
+                // Insere a verdade absoluta que veio da planilha
                 json.data.forEach(item => {
-                    const base64Segura = item.fotoBase64 || item.foto || '';
-                    store.put({ ...item, id: item.id.toString(), valor: parseFloat(item.valor), sinc: 1, foto: base64Segura });
+                    store.put({ ...item, id: item.id.toString(), valor: parseFloat(item.valor), sinc: 1 });
                 });
-                
+
                 txFinal.oncomplete = () => {
                     document.getElementById('statusLabel').innerText = "✅ Atualizado";
                     document.getElementById('statusLabel').className = "status online";
-                    carregarLocal(); 
+                    carregarLocal(); // Atualiza a tela com os dados reais da planilha
                 };
             }
         } catch (e) {
@@ -156,7 +158,7 @@ document.getElementById('inputFoto').onchange = e => {
             const canvas = document.createElement('canvas');
             const MAX = 250;
             const scale = MAX / Math.max(img.width, img.height);
-            canvas.width = img.width * scale;
+            canvas.width = img.width * scale; 
             canvas.height = img.height * scale;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -173,15 +175,10 @@ function abrirZoom(src) {
     if(src && !src.includes('placeholder')) {
         document.getElementById('zoomedImg').src = src;
         document.getElementById('zoomOverlay').classList.add('active');
-        // NOVA LÓGICA: Libera o zoom do iPhone dinamicamente
-        document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover');
     }
 }
-
 function fecharZoom() {
     document.getElementById('zoomOverlay').classList.remove('active');
-    // NOVA LÓGICA: Trava o zoom novamente para proteger a interface do App
-    document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover');
 }
 
 // Operações CRUD Local
@@ -209,13 +206,15 @@ function editar(id) {
 
 function excluir(id) {
     if (!confirm("Excluir este item?")) return;
+    
+    // Exclusão Lógica para suportar o modo offline
     const tx = db.transaction(STORE, 'readwrite');
     const store = tx.objectStore(STORE);
     store.get(id).onsuccess = e => {
         let item = e.target.result;
         if(item) {
-            item.excluido = true;
-            item.sinc = 0;
+            item.excluido = true; // Marca para exclusão
+            item.sinc = 0; // Coloca na fila de envio
             store.put(item).onsuccess = () => {
                 carregarLocal();
                 sincronizar();
@@ -233,7 +232,7 @@ function salvar() {
         descricao: document.getElementById('descricao').value || 'S/D',
         valor: parseFloat(document.getElementById('valor').value) || 0,
         foto: fotoBase64 || '',
-        sinc: 0 
+        sinc: 0 // Nasce pendente para subir
     };
     const tx = db.transaction(STORE, 'readwrite');
     tx.objectStore(STORE).put(item);
