@@ -1,121 +1,268 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Finanças Pro</title>
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2341/2341113.png">
-    <link rel="manifest" href="manifest.json">
-    
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        :root { --p: #007bff; --s: #22c55e; --d: #ef4444; --bg: #f4f7f9; }
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, system-ui, sans-serif; }
-        body { background: var(--bg); padding: 15px; padding-bottom: 100px; }
-        .container { max-width: 500px; margin: 0 auto; }
-        
-        /* Cards e Status */
-        .header { display: flex; justify-content: space-between; margin-bottom: 15px; align-items: center; }
-        .status { font-size: 11px; padding: 4px 10px; border-radius: 12px; font-weight: bold; background: #eee; transition: background 0.3s; }
-        .status.online { background: #d1e7dd; color: #0f5132; }
-        .status.offline { background: #f8d7da; color: #842029; }
-        
-        .card-saldo { background: #fff; padding: 20px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 20px; }
-        .valor-principal { font-size: 30px; font-weight: bold; margin: 8px 0; }
-        
-        /* Lista de Itens */
-        .item { background: #fff; padding: 15px; border-radius: 16px; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.03); }
-        .mini-foto { width: 55px; height: 55px; border-radius: 10px; background: #f0f0f0; object-fit: cover; border: 1px solid #eee; cursor: pointer; }
-        .info { flex: 1; display: flex; flex-direction: column; }
-        .info strong { font-size: 16px; color: #333; }
-        .info span { font-size: 13px; color: #777; margin-top: 2px; }
-        .info small { font-size: 11px; color: #aaa; margin-top: 4px; font-weight: 500; }
-        
-        .acoes { text-align: right; display: flex; flex-direction: column; gap: 5px; }
-        .btn-acao { font-size: 11px; border: none; background: none; color: var(--p); cursor: pointer; padding: 2px; }
-        .btn-excluir { color: var(--d); }
+<meta charset="UTF-8">
 
-        /* Inputs e Botões */
-        input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; -webkit-appearance: none; }
-        .btn { width: 100%; padding: 14px; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; margin-top: 10px; font-size: 15px; }
-        .btn-save { background: var(--p); color: #fff; }
-        .btn-cancel { background: #e9ecef; color: #495057; }
+<!-- ALTERAÇÃO: permite zoom -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
-        /* Menu Inferior */
-        .tabs { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; display: flex; padding: 10px 10px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid #eee; z-index: 100; }
-        .tab { flex: 1; text-align: center; border: none; background: none; font-size: 12px; color: #999; }
-        .tab.active { color: var(--p); font-weight: bold; }
+<title>Finanças Pro</title>
 
-        /* Modais */
-        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: none; z-index: 200; backdrop-filter: blur(3px); justify-content: center; align-items: center; }
-        .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 92%; max-width: 400px; background: #fff; border-radius: 24px; padding: 20px; display: none; z-index: 300; max-height: 90vh; overflow-y: auto; }
-        .modal.active, .overlay.active { display: flex; }
-        .modal-form { display: none; }
-        .modal-form.active { display: block; }
-        
-        #zoomedImg { max-width: 90%; max-height: 80vh; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
-    </style>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+
+<link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2341/2341113.png">
+<link rel="manifest" href="manifest.json">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+:root { --p:#007bff; --s:#22c55e; --d:#ef4444; --bg:#f4f7f9; }
+
+*{
+box-sizing:border-box;
+margin:0;
+padding:0;
+font-family:-apple-system,system-ui,sans-serif;
+}
+
+body{
+background:var(--bg);
+padding:15px;
+padding-bottom:100px;
+}
+
+.container{
+max-width:500px;
+margin:0 auto;
+}
+
+.header{
+display:flex;
+justify-content:space-between;
+margin-bottom:15px;
+align-items:center;
+}
+
+.status{
+font-size:11px;
+padding:4px 10px;
+border-radius:12px;
+font-weight:bold;
+background:#eee;
+}
+
+.status.online{
+background:#d1e7dd;
+color:#0f5132;
+}
+
+.status.offline{
+background:#f8d7da;
+color:#842029;
+}
+
+.card-saldo{
+background:#fff;
+padding:20px;
+border-radius:20px;
+box-shadow:0 4px 12px rgba(0,0,0,0.08);
+margin-bottom:20px;
+}
+
+.valor-principal{
+font-size:30px;
+font-weight:bold;
+margin:8px 0;
+}
+
+.item{
+background:#fff;
+padding:15px;
+border-radius:16px;
+margin-bottom:10px;
+display:flex;
+align-items:center;
+gap:12px;
+box-shadow:0 2px 5px rgba(0,0,0,0.03);
+}
+
+.mini-foto{
+width:55px;
+height:55px;
+border-radius:10px;
+background:#f0f0f0;
+object-fit:cover;
+border:1px solid #eee;
+cursor:pointer;
+}
+
+.info{
+flex:1;
+display:flex;
+flex-direction:column;
+}
+
+.info strong{
+font-size:16px;
+color:#333;
+}
+
+.info span{
+font-size:13px;
+color:#777;
+margin-top:2px;
+}
+
+.info small{
+font-size:11px;
+color:#aaa;
+margin-top:4px;
+font-weight:500;
+}
+
+.acoes{
+text-align:right;
+display:flex;
+flex-direction:column;
+gap:5px;
+}
+
+.btn-acao{
+font-size:11px;
+border:none;
+background:none;
+color:var(--p);
+cursor:pointer;
+padding:2px;
+}
+
+.btn-excluir{
+color:var(--d);
+}
+
+input,select{
+width:100%;
+padding:12px;
+margin:8px 0;
+border:1px solid #ddd;
+border-radius:10px;
+font-size:16px;
+}
+
+.btn{
+width:100%;
+padding:14px;
+border:none;
+border-radius:12px;
+font-weight:bold;
+cursor:pointer;
+margin-top:10px;
+font-size:15px;
+}
+
+.btn-save{background:var(--p);color:#fff;}
+.btn-cancel{background:#e9ecef;color:#495057;}
+
+.tabs{
+position:fixed;
+bottom:0;
+left:0;
+right:0;
+background:#fff;
+display:flex;
+padding:10px;
+border-top:1px solid #eee;
+z-index:100;
+}
+
+.tab{
+flex:1;
+text-align:center;
+border:none;
+background:none;
+font-size:12px;
+color:#999;
+}
+
+.tab.active{
+color:var(--p);
+font-weight:bold;
+}
+
+.overlay{
+position:fixed;
+inset:0;
+background:rgba(0,0,0,0.9);
+display:none;
+z-index:200;
+justify-content:center;
+align-items:center;
+}
+
+.overlay.active{
+display:flex;
+}
+
+#zoomedImg{
+max-width:95%;
+max-height:90vh;
+border-radius:12px;
+transition:transform .2s;
+}
+</style>
 </head>
+
 <body>
-    <div class="container">
-        <div class="header">
-            <h3>Finanças Familiar</h3>
-            <div id="statusLabel" class="status">Carregando...</div>
-        </div>
 
-        <div id="view-resumo">
-            <div class="card-saldo">
-                <input type="month" id="filtroMes" style="margin:0 0 15px 0; border:none; padding:0; font-weight:bold; color:var(--p)">
-                <small>Saldo Total</small>
-                <div id="saldoTotal" class="valor-principal">R$ 0,00</div>
-                <div style="display:flex; justify-content: space-between; font-size: 13px;">
-                    <span style="color:var(--s)">Receitas: <b id="totalRec">0</b></span>
-                    <span style="color:var(--d)">Despesas: <b id="totalDes">0</b></span>
-                </div>
-            </div>
-            <div id="listaRecentes"></div>
-            <button class="btn btn-cancel" id="btnExportar" style="margin-top:20px">📥 Baixar Relatório (CSV)</button>
-        </div>
+<div class="container">
 
-        <div id="view-grafico" style="display:none;">
-            <div class="card-saldo"><canvas id="meuGrafico"></canvas></div>
-        </div>
-    </div>
+<div class="header">
+<h3>Finanças Familiar</h3>
+<div id="statusLabel" class="status">Carregando...</div>
+</div>
 
-    <nav class="tabs">
-        <button class="tab active" id="tabResumo">📊<br>Resumo</button>
-        <button class="tab" id="tabAdd" style="font-size:24px; color:var(--p)">⊕</button>
-        <button class="tab" id="tabGrafico">📈<br>Gráfico</button>
-    </nav>
+<div id="view-resumo">
 
-    <div class="overlay" id="overlay"></div>
-    <div class="modal modal-form" id="modalForm">
-        <h4 id="formTitle">Lançamento</h4>
-        <select id="tipo"><option value="Despesa">Despesa</option><option value="Receita">Receita</option></select>
-        <input type="date" id="data">
-        <input type="text" id="categoria" placeholder="Categoria (Ex: Aluguel)">
-        <input type="text" id="descricao" placeholder="Descrição">
-        <input type="number" id="valor" step="0.01" placeholder="Valor R$">
-        <img id="imgPreview" style="width:100%; max-height:120px; object-fit:cover; border-radius:10px; margin:10px 0; display:none">
-        <button class="btn btn-cancel" onclick="document.getElementById('inputFoto').click()">📸 Adicionar Foto</button>
-        <input type="file" id="inputFoto" accept="image/*" style="display:none">
-        <button class="btn btn-save" id="btnSalvar">Salvar</button>
-        <button class="btn btn-cancel" onclick="fecharTudo()">Cancelar</button>
-    </div>
+<div class="card-saldo">
 
-    <div class="overlay" id="zoomOverlay" onclick="fecharZoom()">
-        <img id="zoomedImg" src="">
-    </div>
+<input type="month" id="filtroMes">
 
-    <script src="app.js"></script>
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./service-worker.js');
-            });
-        }
-    </script>
+<small>Saldo Total</small>
+<div id="saldoTotal" class="valor-principal">R$ 0,00</div>
+
+<div style="display:flex;justify-content:space-between;font-size:13px;">
+<span style="color:var(--s)">Receitas: <b id="totalRec">0</b></span>
+<span style="color:var(--d)">Despesas: <b id="totalDes">0</b></span>
+</div>
+
+</div>
+
+<div id="listaRecentes"></div>
+
+<button class="btn btn-cancel" id="btnExportar">📥 Baixar Relatório (CSV)</button>
+
+</div>
+
+<div id="view-grafico" style="display:none;">
+<div class="card-saldo"><canvas id="meuGrafico"></canvas></div>
+</div>
+
+</div>
+
+<nav class="tabs">
+<button class="tab active" id="tabResumo">📊<br>Resumo</button>
+<button class="tab" id="tabAdd" style="font-size:24px;color:var(--p)">⊕</button>
+<button class="tab" id="tabGrafico">📈<br>Gráfico</button>
+</nav>
+
+<div class="overlay" id="overlay"></div>
+
+<div class="overlay" id="zoomOverlay" onclick="fecharZoom()">
+<img id="zoomedImg">
+</div>
+
+<script src="app.js"></script>
+
 </body>
 </html>
