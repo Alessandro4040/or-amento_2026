@@ -1,4 +1,4 @@
-const CACHE_NAME = 'financas-v11';
+const CACHE_NAME = 'financas-v20';
 const assets = ['./', './index.html', './app.js', './manifest.json'];
 
 self.addEventListener('install', e => {
