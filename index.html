@@ -1,121 +1,528 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-PT">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Finanças Pro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+    <title>Finanças Familiar</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2341/2341113.png">
-    <link rel="manifest" href="manifest.json">
-    
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="./manifest.json">
+    <link rel="apple-touch-icon" href="./money-icon.png">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <style>
-        :root { --p: #007bff; --s: #22c55e; --d: #ef4444; --bg: #f4f7f9; }
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, system-ui, sans-serif; }
-        body { background: var(--bg); padding: 15px; padding-bottom: 100px; }
-        .container { max-width: 500px; margin: 0 auto; }
-        
-        /* Cards e Status */
-        .header { display: flex; justify-content: space-between; margin-bottom: 15px; align-items: center; }
-        .status { font-size: 11px; padding: 4px 10px; border-radius: 12px; font-weight: bold; background: #eee; transition: background 0.3s; }
-        .status.online { background: #d1e7dd; color: #0f5132; }
-        .status.offline { background: #f8d7da; color: #842029; }
-        
-        .card-saldo { background: #fff; padding: 20px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 20px; }
-        .valor-principal { font-size: 30px; font-weight: bold; margin: 8px 0; }
-        
-        /* Lista de Itens */
-        .item { background: #fff; padding: 15px; border-radius: 16px; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.03); }
-        .mini-foto { width: 55px; height: 55px; border-radius: 10px; background: #f0f0f0; object-fit: cover; border: 1px solid #eee; cursor: pointer; }
-        .info { flex: 1; display: flex; flex-direction: column; }
-        .info strong { font-size: 16px; color: #333; }
-        .info span { font-size: 13px; color: #777; margin-top: 2px; }
-        .info small { font-size: 11px; color: #aaa; margin-top: 4px; font-weight: 500; }
-        
-        .acoes { text-align: right; display: flex; flex-direction: column; gap: 5px; }
-        .btn-acao { font-size: 11px; border: none; background: none; color: var(--p); cursor: pointer; padding: 2px; }
-        .btn-excluir { color: var(--d); }
-
-        /* Inputs e Botões */
-        input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; -webkit-appearance: none; }
-        .btn { width: 100%; padding: 14px; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; margin-top: 10px; font-size: 15px; }
-        .btn-save { background: var(--p); color: #fff; }
-        .btn-cancel { background: #e9ecef; color: #495057; }
-
-        /* Menu Inferior */
-        .tabs { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; display: flex; padding: 10px 10px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid #eee; z-index: 100; }
-        .tab { flex: 1; text-align: center; border: none; background: none; font-size: 12px; color: #999; }
-        .tab.active { color: var(--p); font-weight: bold; }
-
-        /* Modais */
-        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: none; z-index: 200; backdrop-filter: blur(3px); justify-content: center; align-items: center; }
-        .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 92%; max-width: 400px; background: #fff; border-radius: 24px; padding: 20px; display: none; z-index: 300; max-height: 90vh; overflow-y: auto; }
-        .modal.active, .overlay.active { display: flex; }
-        .modal-form { display: none; }
-        .modal-form.active { display: block; }
-        
-        #zoomedImg { max-width: 90%; max-height: 80vh; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        :root {
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --txt: #0f172a;
+            --p: #2563eb;
+            --s: #16a34a;
+            --d: #dc2626;
+            --w: #f59e0b;
+            --border: #e2e8f0;
+            --shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        [data-theme='escuro'] {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --txt: #f8fafc;
+            --border: #334155;
+            --shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, system-ui, Roboto, sans-serif;
+        }
+        body {
+            background-color: var(--bg);
+            color: var(--txt);
+            transition: 0.3s;
+            padding-bottom: 90px;
+            padding-top: env(safe-area-inset-top, 20px);
+        }
+        .fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            padding: 20px;
+        }
+        .fullscreen.hidden { display: none; }
+        .btn-bio, .btn-password {
+            padding: 15px 30px;
+            font-size: 18px;
+            background: var(--p);
+            color: white;
+            border: none;
+            border-radius: 14px;
+            cursor: pointer;
+            min-width: 200px;
+        }
+        .password-input {
+            width: 80%;
+            max-width: 300px;
+            padding: 14px;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--txt);
+            font-size: 16px;
+            text-align: center;
+        }
+        .error-msg {
+            color: var(--d);
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        header {
+            padding: 12px 16px;
+            background: var(--card);
+            box-shadow: var(--shadow);
+            position: sticky;
+            top: 0;
+            z-index: 99;
+            border-bottom: 1px solid var(--border);
+        }
+        .filters {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .filter-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+        .filter-row input, .filter-row select, .filter-row button {
+            flex: 1;
+            min-width: 100px;
+            padding: 10px 12px;
+            font-size: 15px;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--txt);
+        }
+        .btn-menu {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 10px;
+            cursor: pointer;
+            font-size: 20px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 48px;
+            min-height: 48px;
+        }
+        .sync-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--card);
+            padding: 8px 16px;
+            border-radius: 30px;
+            font-size: 14px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .status-pending { color: var(--w); }
+        .status-synced { color: var(--s); }
+        .dashboard-pyramid {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            padding: 20px;
+        }
+        .card-top { width: 100%; max-width: 400px; text-align: center; }
+        .card-bottom-row {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 400px;
+            gap: 15px;
+        }
+        .card-bottom-row .card { flex: 1; text-align: center; }
+        .card {
+            background: var(--card);
+            padding: 18px 12px;
+            border-radius: 24px;
+            box-shadow: var(--shadow);
+            text-align: center;
+            border: 1px solid var(--border);
+        }
+        .card h3 { font-size: 1rem; margin-bottom: 8px; opacity: 0.8; }
+        .card p { font-weight: bold; font-size: 1.4rem; }
+        #listaContas, #listaMetas, #listaTransacoes {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .fab {
+            position: fixed;
+            bottom: max(20px, env(safe-area-inset-bottom));
+            right: 20px;
+            background: var(--p);
+            color: white;
+            width: 60px;
+            height: 60px;
+            border-radius: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            box-shadow: var(--shadow);
+            border: none;
+            z-index: 100;
+            cursor: pointer;
+            transition: transform 0.1s ease;
+        }
+        .fab:active { transform: scale(0.96); }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--card);
+            padding: 24px 20px;
+            border-radius: 28px;
+            z-index: 1000;
+            width: 90%;
+            max-width: 450px;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+        }
+        .modal.active { display: block; }
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+        }
+        .overlay.active { display: block; }
+        input, select, button {
+            width: 100%;
+            padding: 12px;
+            margin-top: 12px;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--txt);
+            font-size: 16px;
+        }
+        button {
+            cursor: pointer;
+            background: var(--p);
+            color: white;
+            font-weight: 600;
+            border: none;
+        }
+        button.btn-primary { background: var(--p); }
+        button.danger { background: var(--d); }
+        .modal-actions {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        .modal-actions button { flex: 1; margin-top: 0; }
+        #imageViewer {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.92);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(5px);
+        }
+        #imageViewer img {
+            max-width: 90%;
+            max-height: 85%;
+            transition: transform 0.2s ease;
+            cursor: zoom-in;
+            border-radius: 16px;
+        }
+        .fechar-zoom {
+            position: absolute;
+            top: max(20px, env(safe-area-inset-top));
+            right: 20px;
+            width: 48px;
+            height: 48px;
+            background: rgba(0,0,0,0.6);
+            border-radius: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 32px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 10001;
+            backdrop-filter: blur(4px);
+        }
+        #alertasPendentes {
+            padding: 10px 20px;
+            margin: 8px 16px;
+            background: rgba(245,158,11,0.15);
+            border-radius: 40px;
+            color: var(--w);
+            font-weight: bold;
+            text-align: center;
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin: 20px 0 8px;
+        }
+        .section-header h3 { font-size: 1.2rem; }
+        .section-header button {
+            width: auto;
+            padding: 6px 14px;
+            margin: 0;
+            background: var(--p);
+            border-radius: 30px;
+            font-size: 14px;
+        }
+        .label-small {
+            font-size: 13px;
+            margin-bottom: 4px;
+            display: block;
+            color: var(--txt);
+            opacity: 0.7;
+        }
+        /* Campos de data lado a lado */
+        .date-range {
+            display: flex;
+            flex-direction: row;
+            gap: 8px;
+            flex: 2;
+            align-items: flex-end;
+        }
+        .date-field {
+            flex: 1;
+            min-width: 0;
+        }
+        .date-field label {
+            font-size: 12px;
+            display: block;
+            margin-bottom: 4px;
+            opacity: 0.7;
+        }
+        .date-field input {
+            margin-top: 0;
+            width: 100%;
+        }
+        @media (max-width: 480px) {
+            .filter-row {
+                flex-wrap: wrap;
+            }
+            .date-range {
+                width: 100%;
+                flex-direction: row !important;
+                flex-wrap: nowrap;
+            }
+            .date-field {
+                flex: 1;
+            }
+            .card p {
+                font-size: 1.2rem;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h3>Finanças Familiar</h3>
-            <div id="statusLabel" class="status">Carregando...</div>
-        </div>
+    <div id="passwordScreen" class="fullscreen">
+        <h2>🔐 Acesso Restrito</h2>
+        <input type="password" id="passwordInput" class="password-input" placeholder="Senha mestra" autocomplete="off">
+        <button class="btn-password" onclick="submitPassword()">Entrar</button>
+        <div id="passwordError" class="error-msg"></div>
+    </div>
 
-        <div id="view-resumo">
-            <div class="card-saldo">
-                <input type="month" id="filtroMes" style="margin:0 0 15px 0; border:none; padding:0; font-weight:bold; color:var(--p)">
-                <small>Saldo Total</small>
-                <div id="saldoTotal" class="valor-principal">R$ 0,00</div>
-                <div style="display:flex; justify-content: space-between; font-size: 13px;">
-                    <span style="color:var(--s)">Receitas: <b id="totalRec">0</b></span>
-                    <span style="color:var(--d)">Despesas: <b id="totalDes">0</b></span>
+    <div id="lockScreen" class="fullscreen hidden">
+        <h2>💰 Finanças Familiar</h2>
+        <button class="btn-bio" onclick="autenticarBiometria()">🔓 Desbloquear (Face ID / Touch)</button>
+    </div>
+
+    <div id="appContent" style="display: none;">
+        <header>
+            <div class="filters">
+                <div class="filter-row">
+                    <input type="month" id="monthPicker" value="">
+                    <div class="date-range">
+                        <div class="date-field">
+                            <label>📅 Início</label>
+                            <input type="date" id="dataInicioFiltro">
+                        </div>
+                        <div class="date-field">
+                            <label>📅 Fim</label>
+                            <input type="date" id="dataFimFiltro">
+                        </div>
+                    </div>
+                    <button class="btn-menu" onclick="limparFiltroData()" title="Limpar período">🗑️</button>
+                </div>
+                <div class="filter-row">
+                    <input type="text" id="globalSearch" placeholder="🔍 Buscar por descrição...">
+                    <select id="categoryFilter">
+                        <option value="">📂 Todas categorias</option>
+                    </select>
+                    <button class="btn-menu" onclick="alternarTema()" title="Tema">🌓</button>
+                    <button class="btn-menu" onclick="abrirModal('modalExportar')" title="Exportar">📊</button>
+                    <button class="btn-menu" onclick="logout()" title="Sair">🚪</button>
+                </div>
+                <div class="filter-row">
+                    <div id="syncStatus" class="sync-status" onclick="forcarSincronizacao()" title="Clique para sincronizar">🔄 Sincronizando...</div>
                 </div>
             </div>
-            <div id="listaRecentes"></div>
-            <button class="btn btn-cancel" id="btnExportar" style="margin-top:20px">📥 Baixar Relatório (CSV)</button>
+        </header>
+
+        <div id="alertasPendentes"></div>
+
+        <div class="dashboard-pyramid">
+            <div class="card card-top">
+                <h3>💰 Saldo Total (geral)</h3>
+                <p id="saldoTotal">R$ 0,00</p>
+            </div>
+            <div class="card-bottom-row">
+                <div class="card">
+                    <h3>📉 Despesas (filtro)</h3>
+                    <p id="totalDes" style="color: var(--d);">R$ 0,00</p>
+                </div>
+                <div class="card">
+                    <h3>📈 Receitas (filtro)</h3>
+                    <p id="totalRec" style="color: var(--s);">R$ 0,00</p>
+                </div>
+            </div>
+            <div class="card" style="width:100%; max-width:400px; padding:10px; background: var(--card);">
+                <p style="font-size:12px; opacity:0.7;">⬆️ Os valores acima são das transações <strong>pagas</strong> no período e que correspondem à busca e categoria selecionadas.</p>
+            </div>
         </div>
 
-        <div id="view-grafico" style="display:none;">
-            <div class="card-saldo"><canvas id="meuGrafico"></canvas></div>
+        <div style="padding: 0 20px 20px 20px;">
+            <div class="section-header">
+                <h3>💳 Contas e Cartões</h3>
+                <button onclick="abrirModal('modalConta')">+ Adicionar</button>
+            </div>
+            <div id="listaContas"></div>
+            
+            <div class="section-header">
+                <h3>🎯 Cofrinhos / Metas</h3>
+                <button onclick="abrirModal('modalMeta')">+ Novo</button>
+            </div>
+            <div id="listaMetas"></div>
+
+            <div class="section-header">
+                <h3>📋 Transações</h3>
+            </div>
+            <div id="listaTransacoes"></div>
+        </div>
+
+        <button class="fab" onclick="abrirModal('modalTransacao')">+</button>
+    </div>
+
+    <div class="overlay" id="overlay" onclick="fecharModais()"></div>
+
+    <!-- Modal Transação -->
+    <div class="modal" id="modalTransacao">
+        <h3 id="tTituloModal">Nova Transação</h3>
+        <input type="hidden" id="tId">
+        <select id="tTipo">
+            <option value="despesa">💸 Despesa</option>
+            <option value="receita">💰 Receita</option>
+        </select>
+        <input type="text" id="tDescricao" placeholder="Descrição (opcional)">
+        <input type="number" id="tValor" step="0.01" placeholder="Valor R$">
+        <label class="label-small">📅 Data da transação:</label>
+        <input type="date" id="tData">
+        <select id="tConta"><option value="">Selecione a Conta/Cartão</option></select>
+        <select id="tCategoria"></select>
+        <input type="number" id="tParcelas" min="1" value="1" placeholder="Nº Parcelas (1 = à vista)">
+        <select id="tStatus">
+            <option value="true">✅ Pago / Recebido</option>
+            <option value="false">⏳ Pendente</option>
+        </select>
+        <!-- Removido capture="environment" para permitir galeria e arquivos -->
+        <input type="file" id="tFoto" accept="image/*">
+        <div class="modal-actions">
+            <button id="btnExcluirTransacao" class="danger" style="display: none;" onclick="excluirItem('transacoes', 'tId')">🗑 Excluir</button>
+            <button class="btn-primary" onclick="salvarTransacao()">💾 Guardar</button>
         </div>
     </div>
 
-    <nav class="tabs">
-        <button class="tab active" id="tabResumo">📊<br>Resumo</button>
-        <button class="tab" id="tabAdd" style="font-size:24px; color:var(--p)">⊕</button>
-        <button class="tab" id="tabGrafico">📈<br>Gráfico</button>
-    </nav>
-
-    <div class="overlay" id="overlay"></div>
-    <div class="modal modal-form" id="modalForm">
-        <h4 id="formTitle">Lançamento</h4>
-        <select id="tipo"><option value="Despesa">Despesa</option><option value="Receita">Receita</option></select>
-        <input type="date" id="data">
-        <input type="text" id="categoria" placeholder="Categoria (Ex: Aluguel)">
-        <input type="text" id="descricao" placeholder="Descrição">
-        <input type="number" id="valor" step="0.01" placeholder="Valor R$">
-        <img id="imgPreview" style="width:100%; max-height:120px; object-fit:cover; border-radius:10px; margin:10px 0; display:none">
-        <button class="btn btn-cancel" onclick="document.getElementById('inputFoto').click()">📸 Adicionar Foto</button>
-        <input type="file" id="inputFoto" accept="image/*" style="display:none">
-        <button class="btn btn-save" id="btnSalvar">Salvar</button>
-        <button class="btn btn-cancel" onclick="fecharTudo()">Cancelar</button>
+    <div class="modal" id="modalConta">
+        <h3 id="cTituloModal">Nova Conta / Cartão</h3>
+        <input type="hidden" id="cId">
+        <input type="text" id="cNome" placeholder="Nome (ex: Nubank)">
+        <select id="cTipo">
+            <option value="corrente">🏦 Conta Corrente</option>
+            <option value="cartao">💳 Cartão de Crédito</option>
+        </select>
+        <input type="number" id="cSaldoLimite" step="0.01" placeholder="Saldo Inicial / Limite do Cartão">
+        <input type="number" id="cVencimento" placeholder="Dia de Vencimento (1-31) - Opcional" min="1" max="31">
+        <div class="modal-actions">
+            <button id="btnExcluirConta" class="danger" style="display: none;" onclick="excluirItem('contas', 'cId')">🗑 Excluir</button>
+            <button class="btn-primary" onclick="salvarConta()">💾 Guardar</button>
+        </div>
     </div>
 
-    <div class="overlay" id="zoomOverlay" onclick="fecharZoom()">
-        <img id="zoomedImg" src="">
+    <div class="modal" id="modalMeta">
+        <h3 id="mTituloModal">Novo Cofrinho</h3>
+        <input type="hidden" id="mId">
+        <input type="text" id="mNome" placeholder="Objetivo (ex: Viagem)">
+        <input type="number" id="mObjetivo" step="0.01" placeholder="Valor Objetivo R$">
+        <input type="number" id="mAtual" step="0.01" placeholder="Valor Já Guardado (opcional)">
+        <label class="label-small">📅 Data limite:</label>
+        <input type="date" id="mData">
+        <select id="mConta"><option value="">Conta associada (opcional)</option></select>
+        <div class="modal-actions">
+            <button id="btnExcluirMeta" class="danger" style="display: none;" onclick="excluirItem('metas', 'mId')">🗑 Excluir</button>
+            <button class="btn-primary" onclick="salvarMeta()">💾 Guardar</button>
+        </div>
     </div>
 
-    <script src="app.js"></script>
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./service-worker.js');
-            });
-        }
-    </script>
+    <div class="modal" id="modalExportar">
+        <h3>📎 Exportar Relatório</h3>
+        <label class="label-small">Data inicial:</label>
+        <input type="date" id="eDataIni">
+        <label class="label-small">Data final:</label>
+        <input type="date" id="eDataFim">
+        <div class="modal-actions">
+            <button class="btn-primary" onclick="baixarRelatorio()">📄 CSV</button>
+            <button class="btn-primary" onclick="baixarPDF()">📑 PDF</button>
+        </div>
+    </div>
+
+    <div id="imageViewer">
+        <span class="fechar-zoom" onclick="fecharZoom()">✕</span>
+        <img id="zoomImg" src="" onclick="aplicarZoom(this)">
+    </div>
+
+    <script src="./app.js"></script>
 </body>
 </html>
